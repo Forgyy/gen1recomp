@@ -174,6 +174,17 @@ function Manifest.validate(raw, path)
 
   local github = Manifest.parseGithub(raw.github)
 
+  local generations = {}
+  local rawGenerations = raw.game_generations
+  if rawGenerations == nil then rawGenerations = { 1 } end
+  for _, generation in ipairs(array(rawGenerations)) do
+    generation = tonumber(generation)
+    assert(generation and generation >= 1 and generation % 1 == 0,
+      "game_generations must contain positive integers")
+    generations[#generations + 1] = generation
+  end
+  assert(#generations > 0, "game_generations must not be empty")
+
   assert(raw.experimental == nil or type(raw.experimental) == "boolean",
     "experimental must be a boolean")
   local experimental = raw.experimental == true
@@ -219,6 +230,7 @@ function Manifest.validate(raw, path)
     conflictSpecs = parseSpecs(conflicts, "conflicts"),
     category = raw.category or "OTHER",
     game_version = raw.game_version,
+    game_generations = generations,
     description = raw.description or "",
     github = github,
     experimental = experimental,

@@ -141,6 +141,9 @@ function Loader.new(opts)
     modInput = {},
     fs = (opts and opts.fs) or (love and love.filesystem),
     dev = dev,
+    game = opts and opts.game,
+    generation = (opts and opts.generation) or 1,
+    skipBuiltins = opts and opts.skipBuiltins == true,
   }, Loader)
   assert(self.fs, "Loader.new requires opts.fs when love is unavailable")
   for name, spec in pairs(Schemas.REGISTRIES) do
@@ -256,7 +259,13 @@ function Loader:_validate()
     local mod = self.mods[id]
     local manifest = mod.manifest
     local reason
-    if not self:_exists(mod.path .. "/" .. manifest.entry) then
+    local supportsGeneration = false
+    for _, generation in ipairs(manifest.game_generations or { 1 }) do
+      if generation == self.generation then supportsGeneration = true break end
+    end
+    if not supportsGeneration then
+      reason = ("does not support game generation %d"):format(self.generation)
+    elseif not self:_exists(mod.path .. "/" .. manifest.entry) then
       reason = "entry file missing: " .. manifest.entry
     elseif manifest.options_schema
         and not self:_exists(mod.path .. "/" .. manifest.options_schema) then
@@ -914,7 +923,9 @@ function Loader:load(data)
   end
   -- vanilla content is registrations too, and they land before discovery so
   -- a mod's register collides with the engine's and has to say override
-  require("src.mods.Builtins").install(self.content, data)
+  if not self.skipBuiltins then
+    require("src.mods.Builtins").install(self.content, data)
+  end
   self:_loadState()
   self:_discover()
   -- Experimental mods stay off until the player opts in: a missing
