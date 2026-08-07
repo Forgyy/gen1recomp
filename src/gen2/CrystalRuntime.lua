@@ -5,6 +5,7 @@ local Input = require("src.core.Input")
 local SaveData = require("src.core.SaveData")
 local TouchControls = require("src.core.TouchControls")
 local CrystalModApi = require("src.gen2.CrystalModApi")
+local CrystalOptions = require("src.gen2.CrystalOptions")
 
 local CrystalRuntime = {}
 local COLOR_MODES = { "ogred", "gbc", "redpp", "og", "og_inv", "gbc_inv", "classic" }
@@ -56,6 +57,7 @@ function CrystalRuntime:load()
   self.mods = ModLoader.new({ game = self, generation = 2, skipBuiltins = true })
   self.mods:load(self.data)
   self.modStatus = self.mods:status()
+  self.optionsMenu = CrystalOptions.new(self)
   if os.getenv("POKEPORT_CRYSTAL_MOD_TEST") == "1" then
     CrystalModApi.keypressed(self, "3")
   end
@@ -63,7 +65,7 @@ function CrystalRuntime:load()
   self.emulatedFrames = 0
   self.captureTarget = tonumber(os.getenv("POKEPORT_CRYSTAL_CAPTURE_FRAMES") or "")
   self.captureOutput = os.getenv("POKEPORT_CRYSTAL_CAPTURE")
-  self.notice = "F1 save  F2 load  F6 reset  1-5 display"
+  self.notice = "F3 mod options  F1 save  F2 load  F6 reset"
   self.noticeTime = 6
   if love.window and love.window.setTitle then
     love.window.setTitle("Pokemon Crystal (Lua Gen 2 Runtime)")
@@ -124,6 +126,12 @@ function CrystalRuntime:_cycleGbcFx()
 end
 
 function CrystalRuntime:update(dt)
+  if self.optionsMenu and self.optionsMenu.active then
+    self.core:setAudioEnabled(false)
+    self.core:update(dt)
+    self.noticeTime = math.max(0, (self.noticeTime or 0) - dt)
+    return
+  end
   local speed = GameSpeed.clamp(self.speedOverride or self.options.speed or 1)
   local frameTime = 1 / 59.7275
   self.accumulator = math.min(self.accumulator + dt * speed, frameTime * 12)
@@ -162,7 +170,7 @@ function CrystalRuntime:draw()
   if not CrystalModApi.draw(self, width, height) then
     self.core:draw(width, height, self.options)
   end
-  TouchControls:draw()
+  if not (self.optionsMenu and self.optionsMenu.active) then TouchControls:draw() end
   if self.noticeTime > 0 then
     love.graphics.push("all")
     love.graphics.setColor(0, 0, 0, 0.75)
@@ -171,9 +179,11 @@ function CrystalRuntime:draw()
     love.graphics.print(self.notice, 22, 19)
     love.graphics.pop()
   end
+  if self.optionsMenu then self.optionsMenu:draw() end
 end
 
 function CrystalRuntime:keypressed(key)
+  if self.optionsMenu and self.optionsMenu:keypressed(key) then return end
   if CrystalModApi.keypressed(self, key) then return end
   if key == "f1" then
     self.core:saveBattery()
@@ -205,17 +215,23 @@ function CrystalRuntime:keypressed(key)
 end
 
 function CrystalRuntime:keyreleased(key)
+  if self.optionsMenu and self.optionsMenu.active then return end
   if not CrystalModApi.keyreleased(self, key) then Input:keyreleased(key) end
 end
 
 function CrystalRuntime:gamepadpressed(joystick, button)
-  if CrystalModApi.gamepadpressed(self, joystick, button) then return end
-  TouchControls:noteGamepad()
   local selectHeld = Input:isDown("select")
   if not selectHeld and joystick and joystick.isGamepadDown then
     local ok, down = pcall(function() return joystick:isGamepadDown("back") end)
     selectHeld = ok and down == true
   end
+  if self.optionsMenu then
+    if self.optionsMenu.active and self.optionsMenu:gamepadpressed(button) then return end
+    if (button == "guide" or (button == "start" and selectHeld))
+        and self.optionsMenu:open() then return end
+  end
+  if CrystalModApi.gamepadpressed(self, joystick, button) then return end
+  TouchControls:noteGamepad()
   if selectHeld then
     local digit = GamepadMap.displayChordDigit(button)
     if digit then self:keypressed(digit) return end
@@ -230,33 +246,39 @@ function CrystalRuntime:gamepadpressed(joystick, button)
 end
 
 function CrystalRuntime:gamepadreleased(joystick, button)
+  if self.optionsMenu and self.optionsMenu.active then return end
   Input:gamepadreleased(joystick, button)
 end
 
 function CrystalRuntime:gamepadaxis(joystick, axis, value)
+  if self.optionsMenu and self.optionsMenu.active then return end
   if CrystalModApi.gamepadaxis(self, joystick, axis, value) then return end
   if math.abs(value) > 0.5 then TouchControls:noteGamepad() end
   Input:gamepadaxis(joystick, axis, value)
 end
 
 function CrystalRuntime:joystickpressed(joystick, button)
+  if self.optionsMenu and self.optionsMenu.active then return end
   if GamepadMap.ignoreRawForJoystick(joystick) then return end
   TouchControls:noteGamepad()
   Input:joystickpressed(joystick, button)
 end
 
 function CrystalRuntime:joystickreleased(joystick, button)
+  if self.optionsMenu and self.optionsMenu.active then return end
   if GamepadMap.ignoreRawForJoystick(joystick) then return end
   Input:joystickreleased(joystick, button)
 end
 
 function CrystalRuntime:joystickaxis(joystick, axis, value)
+  if self.optionsMenu and self.optionsMenu.active then return end
   if GamepadMap.ignoreRawForJoystick(joystick) then return end
   if math.abs(value) > 0.5 then TouchControls:noteGamepad() end
   Input:joystickaxis(joystick, axis, value)
 end
 
 function CrystalRuntime:joystickhat(joystick, hat, direction)
+  if self.optionsMenu and self.optionsMenu.active then return end
   if GamepadMap.ignoreRawForJoystick(joystick) then return end
   if direction ~= "c" then TouchControls:noteGamepad() end
   Input:joystickhat(joystick, hat, direction)
@@ -276,26 +298,36 @@ function CrystalRuntime:onResume() self:focus(true) end
 function CrystalRuntime:joystickadded() self:focus(true) end
 function CrystalRuntime:joystickremoved() self:focus(true); TouchControls:joystickremoved() end
 function CrystalRuntime:touchpressed(id, x, y)
+  if self.optionsMenu and self.optionsMenu:pointerPressed(x, y) then return end
   if not CrystalModApi.touchpressed(self, id, x, y) then
     TouchControls:touchpressed(id, x, y)
   end
 end
 function CrystalRuntime:touchmoved(id, x, y)
+  if self.optionsMenu and self.optionsMenu.active then return end
   if not CrystalModApi.touchmoved(self, id, x, y) then
     TouchControls:touchmoved(id, x, y)
   end
 end
 function CrystalRuntime:touchreleased(id, x, y)
+  if self.optionsMenu and self.optionsMenu.active then return end
   if not CrystalModApi.touchreleased(self, id, x, y) then
     TouchControls:touchreleased(id, x, y)
   end
 end
-function CrystalRuntime:mousepressed() end
+function CrystalRuntime:mousepressed(x, y, button)
+  if button == 1 and self.optionsMenu
+      and self.optionsMenu:pointerPressed(x, y) then return end
+end
 function CrystalRuntime:mousemoved(x, y, dx, dy)
+  if self.optionsMenu and self.optionsMenu.active then return end
   CrystalModApi.mousemoved(self, x, y, dx, dy)
 end
-function CrystalRuntime:mousereleased() end
+function CrystalRuntime:mousereleased()
+  if self.optionsMenu and self.optionsMenu.active then return end
+end
 function CrystalRuntime:wheelmoved(_, dy)
+  if self.optionsMenu and self.optionsMenu:wheelmoved(dy) then return end
   if CrystalModApi.wheelmoved(self, 0, dy) then return end
   if dy > 0 then self:_zoomStep(1) elseif dy < 0 then self:_zoomStep(-1) end
 end
