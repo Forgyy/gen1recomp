@@ -208,6 +208,7 @@ local function bootGame(version)
   -- data, so data/generated + assets/generated resolve to that version's files.
   local GameVersion = require("src.core.GameVersion")
   GameVersion.set(version or os.getenv("POKEPORT_VERSION") or "red")
+  _G.POKEPORT_GAME_GENERATION = GameVersion.info().generation
   if GameVersion.info().runtime == "lua-gbc" then
     Game = require("src.gen2.CrystalRuntime")
     Game:load()

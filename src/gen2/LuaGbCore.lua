@@ -204,6 +204,11 @@ function LuaGbCore:_refreshImage()
   self.frameDirty = false
 end
 
+function LuaGbCore:getFrameImage()
+  self:_refreshImage()
+  return self.image
+end
+
 function LuaGbCore:draw(width, height, options)
   self:_refreshImage()
   local scale = math.min(width / 160, height / 144)
