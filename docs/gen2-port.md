@@ -50,6 +50,13 @@ DAYTIME, AA, VR, and SMOOTH TURN. Its desktop hotkeys are `3`, `5`, `6`, `7`,
 `8`, `9`, `0`, `B`, `V`, and `O`; `Q`/`E`, the mouse wheel, mouse look, right
 stick, and the mobile `3D`/`FX` buttons control the camera and effects.
 
+Crystal cannot inject host rows into the cartridge's original `OPTIONS`
+screen. Press `F3` or `Escape` during play to open the host-side **CRYSTAL MOD
+OPTIONS** overlay. On a controller, hold Select and press Start (the Guide
+button also opens it); on touch screens, tap the `MOD OPTIONS` button at the
+top center. The overlay pauses emulation, persists changes immediately, and
+delivers `mod.options_changed` to the active mod.
+
 ## Metadata and Verification
 
 Build the metadata-only manifest from `pret/pokecrystal` and the published v1.0
