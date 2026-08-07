@@ -1,38 +1,48 @@
-﻿# Run the LÖVE2D Pokémon Red port (Windows).
-#
-# Assumes scripts\setup.ps1 has been run once (generated data present and
-# LÖVE installed).  Extra arguments are passed through to LÖVE.
-#
-# Link play is peer-to-peer over lua-enet (bundled with LÖVE): one player
-# uses START > LINK > HOST A GAME, the other joins the shown address.
-# UDP port defaults to 7777; override with $env:POKEPORT_LINK_PORT.
+# Run the multi-game LOVE launcher on Windows. ROM import and cache generation
+# happen inside the launcher. Extra arguments are passed through to LOVE.
 
 $ErrorActionPreference = 'Stop'
-
 $Root = Split-Path -Parent $PSScriptRoot
 
-function Fail($msg) { Write-Host "error: $msg" -ForegroundColor Red; exit 1 }
-
-if (-not (Test-Path (Join-Path $Root 'data\generated\maps.lua'))) {
-    Fail 'generated data missing,  run scripts\setup.ps1 first'
+function Fail($message) {
+    Write-Host "error: $message" -ForegroundColor Red
+    exit 1
 }
 
-# Prefer lovec.exe (console-attached) so print output lands in the terminal;
-# love.exe is a GUI-subsystem binary that swallows stdout.
 function Find-Love {
-    foreach ($name in 'lovec', 'love') {
-        $cmd = Get-Command $name -ErrorAction SilentlyContinue
-        if ($cmd) { return $cmd.Source }
+    if ($env:LOVE_PATH) {
+        if (Test-Path -LiteralPath $env:LOVE_PATH -PathType Leaf) {
+            return (Resolve-Path -LiteralPath $env:LOVE_PATH).Path
+        }
+        $candidate = Join-Path $env:LOVE_PATH 'love.exe'
+        if (Test-Path $candidate) { return $candidate }
     }
-    $dirs = @(
+    foreach ($name in 'love', 'lovec') {
+        $command = Get-Command $name -ErrorAction SilentlyContinue
+        if ($command) { return $command.Source }
+    }
+    foreach ($directory in @(
         "$env:ProgramFiles\LOVE",
         "${env:ProgramFiles(x86)}\LOVE",
         "$env:LOCALAPPDATA\Programs\LOVE"
-    )
-    foreach ($d in $dirs) {
-        foreach ($name in 'lovec.exe', 'love.exe') {
-            $p = Join-Path $d $name
-            if ($d -and (Test-Path $p)) { return $p }
+    )) {
+        foreach ($name in 'love.exe', 'lovec.exe') {
+            $candidate = Join-Path $directory $name
+            if ($directory -and (Test-Path $candidate)) { return $candidate }
+        }
+    }
+    $parent = Split-Path -Parent $Root
+    foreach ($bundle in Get-ChildItem -Path $parent -Directory `
+            -Filter 'love-*-win64' -ErrorAction SilentlyContinue) {
+        $directories = @($bundle.FullName) + @(
+            Get-ChildItem -Path $bundle.FullName -Directory `
+                -ErrorAction SilentlyContinue | ForEach-Object FullName
+        )
+        foreach ($directory in $directories) {
+            foreach ($name in 'love.exe', 'lovec.exe') {
+                $candidate = Join-Path $directory $name
+                if (Test-Path $candidate) { return $candidate }
+            }
         }
     }
     return $null
@@ -40,7 +50,7 @@ function Find-Love {
 
 $LoveBin = Find-Love
 if (-not $LoveBin) {
-    Fail 'LÖVE not found,  run scripts\setup.ps1 (or install from https://love2d.org)'
+    Fail 'LOVE not found; install it from https://love2d.org or set LOVE_PATH'
 }
 
 & $LoveBin $Root @args

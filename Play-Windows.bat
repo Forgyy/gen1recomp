@@ -1,8 +1,7 @@
 @echo off
-rem Pokemon Red (LOVE2D) - double-click launcher for Windows.
-rem First run: decodes a user-provided .gb and installs Python/LOVE if needed,
-rem builds the game data, then launches. Later runs: launches straight away.
-title Pokemon Red - LOVE2D port
+rem Multi-game LOVE2D launcher for Windows.
+rem ROM verification and private import happen inside the launcher.
+title Pokemon Red Blue Yellow Crystal - LOVE2D port
 cd /d "%~dp0"
 powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\bootstrap.ps1"
 if errorlevel 1 (

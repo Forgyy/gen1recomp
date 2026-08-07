@@ -47,9 +47,9 @@ rm -f "$OUTPUT"
 # The launcher UI kit lives at src/ui/kit (inside src/, packed wholesale);
 # the vendored libs/flexlove tree it replaced is gone.
 (cd "$ROOT" && zip -q -9 -r "$OUTPUT" \
-  main.lua conf.lua src data assets tools/save-editor \
+  main.lua conf.lua src data assets vendor/luagb tools/save-editor \
   tools/rom_manifest.json tools/rom_manifest_blue.json \
-  tools/rom_manifest_yellow.json \
+  tools/rom_manifest_yellow.json tools/gen2/rom_manifest_crystal.json \
   -x '*.DS_Store' 'data/generated/*' 'assets/generated/*')
 
 if [ -n "$BUILD_INFO" ]; then
@@ -88,6 +88,9 @@ for required in tools/save-editor/App.lua tools/save-editor/Kit.lua \
                 tools/save-editor/panels/Party.lua \
                 tools/rom_manifest.json tools/rom_manifest_blue.json \
                 tools/rom_manifest_yellow.json \
+                tools/gen2/rom_manifest_crystal.json \
+                vendor/luagb/LICENSE.txt \
+                vendor/luagb/gameboy/init.lua \
                 src/ui/kit/Kit.lua \
                 src/import/LauncherView.lua; do
   grep -qxF "$required" "$LISTING" \

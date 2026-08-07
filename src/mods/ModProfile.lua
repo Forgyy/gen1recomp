@@ -27,7 +27,7 @@ ModProfile.FORMAT_VERSION = 1
 
 -- deterministic order; GameVersion.VERSIONS is a map, and a profile file has
 -- to encode the same way twice for a diff to mean anything
-local VERSION_ORDER = { "red", "blue", "yellow" }
+local VERSION_ORDER = GameVersion.IMPORT_ORDER
 
 local function fsOr(fs)
   return fs or (love and love.filesystem) or nil
@@ -126,7 +126,7 @@ function ModProfile.decode(body)
     end
   end
   for version, slot in pairs(type(raw.slots) == "table" and raw.slots or {}) do
-    if GameVersion.VERSIONS[version] and type(slot) == "string" then
+    if GameVersion.isImportable(version) and type(slot) == "string" then
       p.slots[version] = slot
     end
   end
