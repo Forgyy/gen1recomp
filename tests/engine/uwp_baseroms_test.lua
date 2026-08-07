@@ -17,6 +17,7 @@ local roms = {
   ["baseroms/z-red.gb"] = string.rep("R", MiB),
   ["baseroms/a-blue.gb"] = string.rep("B", MiB),
   ["baseroms/b-yellow.gbc"] = string.rep("Y", MiB),
+  ["baseroms/c-crystal.gbc"] = string.rep("C", 2 * MiB),
   ["baseroms/small.gb"] = "small",
   ["baseroms/unknown.gb"] = string.rep("?", MiB),
 }
@@ -39,6 +40,7 @@ love.data.encode = function(_, _, digest)
   if digest == "R" then return GameVersion.info("red").sha1 end
   if digest == "B" then return GameVersion.info("blue").sha1 end
   if digest == "Y" then return GameVersion.info("yellow").sha1 end
+  if digest == "C" then return GameVersion.info("crystal").sha1 end
   return "0000000000000000000000000000000000000000"
 end
 
@@ -60,7 +62,10 @@ end
 love.filesystem.getDirectoryItems = function(path)
   if path ~= "baseroms" then return {} end
   listings = listings + 1
-  return { "z-red.gb", "small.gb", "unknown.gb", "b-yellow.gbc", "a-blue.gb" }
+  return {
+    "z-red.gb", "small.gb", "unknown.gb", "b-yellow.gbc", "a-blue.gb",
+    "c-crystal.gbc",
+  }
 end
 love.filesystem.createDirectory = function() return true end
 love.system.pickFile = function()
@@ -73,7 +78,7 @@ local function importer(ready)
   return setmetatable({
     baseRomDiscovery = true,
     baseRoms = {},
-    ready = ready or { red = false, blue = false, yellow = false },
+    ready = ready or { red = false, blue = false, yellow = false, crystal = false },
     returning = {},
     workState = nil,
     nativePicker = true,
@@ -81,14 +86,14 @@ local function importer(ready)
   }, RomImporter)
 end
 
-local allReady = importer({ red = true, blue = true, yellow = true })
+local allReady = importer({ red = true, blue = true, yellow = true, crystal = true })
 allReady:_queueBaseRomScan()
 eq(allReady.baseRomScan.state, "done", "ready launcher skips discovery")
 eq(listings, 0, "ready launcher does not enumerate baseroms")
 
 local imp = importer()
 imp:_queueBaseRomScan()
-for _ = 1, 5 do
+for _ = 1, 6 do
   local before = reads
   imp:_stepBaseRomScan()
   check(reads - before <= 1, "discovery reads at most one ROM per step")
@@ -97,7 +102,8 @@ eq(listings, 1, "discovery enumerates baseroms once")
 eq(imp.baseRoms.blue.name, "a-blue.gb", "Blue ROM is detected by SHA-1")
 eq(imp.baseRoms.yellow.name, "b-yellow.gbc", "Yellow ROM is detected by SHA-1")
 eq(imp.baseRoms.red.name, "z-red.gb", "Red ROM is detected by SHA-1")
-eq(reads, 4, "wrong-sized files are skipped before reading")
+eq(imp.baseRoms.crystal.name, "c-crystal.gbc", "Crystal ROM is detected by SHA-1")
+eq(reads, 5, "wrong-sized files are skipped before reading")
 eq(imp.baseRomScan.state, "done", "discovery stops when every missing ROM is found")
 
 local settledReads, settledListings = reads, listings
@@ -123,7 +129,7 @@ eq(picks, 0, "missing detected ROM does not open the picker unexpectedly")
 missing:choose("red")
 eq(picks, 1, "the next import attempt falls back to the native picker")
 
-local rescanned = importer({ red = true, blue = true, yellow = true })
+local rescanned = importer({ red = true, blue = true, yellow = true, crystal = true })
 rescanned.baseRoms.red = { path = "baseroms/z-red.gb", name = "z-red.gb" }
 rescanned:reimport("red")
 check(rescanned.baseRoms.red == nil, "re-import clears the detected ROM")

@@ -126,6 +126,14 @@ local crosswalks = {}   -- [key] = { pokemon=, moves=, items=, maps=, eventFlags
 local charmapReady
 
 local function ensureData(gameVersion)
+  if gameVersion then
+    local ok, GameVersion = pcall(require, "src.core.GameVersion")
+    local info = ok and GameVersion.info(gameVersion) or nil
+    if not info or info.generation ~= 1 then
+      return nil, "raw save conversion is not implemented for "
+        .. tostring(gameVersion)
+    end
+  end
   local key = gameVersion or "*"
   if not crosswalks[key] then
     local data = {}

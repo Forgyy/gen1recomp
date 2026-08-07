@@ -170,7 +170,7 @@ famous bugs included:
 
 ## Running From Source
 
-Requires LÖVE 11.x. Place a Red, Blue, or Yellow ROM in the project folder and
+Requires LÖVE 11.x. Import a clean US Red, Blue, Yellow, or Crystal v1.0 ROM and
 double-click `Play-Mac.command` or `Play-Windows.bat`, or run:
 
 ```sh
@@ -343,6 +343,8 @@ request with real detail is one that can actually get built.
 
 ## More
 
+- [Pokemon Crystal runtime](docs/gen2-port.md) — pure-Lua Gen 2 execution,
+ROM verification, persistence, metadata, and packaging.
 - [Link play](https://github.com/bryanthaboi/gen1recomp/wiki/Guide-Link-Play)
 — START > LINK connects two copies directly over UDP.
 - [Save editor](https://github.com/bryanthaboi/gen1recomp/wiki/Guide-Save-Editor)

@@ -78,6 +78,19 @@ function SaveFileIO.importToSlot(source, version, force)
   version = version or GameVersion.get()
   local bytes, readErr = readSource(source)
   if not bytes then return false, readErr end
+  if GameVersion.info(version).runtime == "lua-gbc" then
+    if #bytes < SAVE_SIZE then
+      return false, ("A save file must be at least %d bytes (32 KB); this one is %d.")
+        :format(SAVE_SIZE, #bytes)
+    end
+    if #bytes > SAVE_SIZE and not force then
+      return false, nil, { needsConfirm = true, size = #bytes }
+    end
+    local ok, writeErr = require("src.gen2.CrystalStorage").write(
+      "pokemon_crystal.sav", bytes:sub(1, SAVE_SIZE))
+    if not ok then return false, "could not write the imported save: " .. tostring(writeErr) end
+    return true, "battery"
+  end
   if #bytes ~= SAVE_SIZE then
     local check = SaveConvert.mainChecksumValid(bytes)
     if check == nil then
@@ -123,6 +136,23 @@ end
 -- message otherwise.
 function SaveFileIO.exportActiveSlot(version)
   version = version or GameVersion.get()
+  if GameVersion.info(version).runtime == "lua-gbc" then
+    local bytes = require("src.gen2.CrystalStorage").read("pokemon_crystal.sav")
+    if not bytes then return false, "Crystal has no battery save to export yet" end
+    local fs = SaveData.portableFs() or (love and love.filesystem)
+    if not (fs and fs.write) then return false, "no filesystem available to export to" end
+    if fs.createDirectory then fs.createDirectory("exports"); fs.createDirectory("exports/crystal") end
+    local rel = "exports/crystal/gen1recomp-crystal.sav"
+    local ok, writeErr = fs.write(rel, bytes)
+    if not ok then return false, "could not write the export: " .. tostring(writeErr) end
+    local portableBase = SaveData.portableBaseDir()
+    if portableBase then
+      local sep = package.config:sub(1, 1)
+      return true, portableBase .. sep .. rel:gsub("/", sep)
+    end
+    local base = fs.getSaveDirectory and fs.getSaveDirectory() or ""
+    return true, base ~= "" and (base .. "/" .. rel) or rel
+  end
   local save = SaveData.load(version)
   if not save then return false, "this game has no save to export yet" end
   local bytes, exportErr = SaveConvert.exportSav(save, version)

@@ -205,9 +205,9 @@ pack_game_love() {
   # The launcher UI kit lives at src/ui/kit (inside src/, packed wholesale);
   # the vendored libs/flexlove tree it replaced is gone.
   (cd "$ROOT" && zip -q -9 -r "$LOVE_FILE" \
-    main.lua conf.lua src data assets tools/save-editor \
+    main.lua conf.lua src data assets vendor/luagb tools/save-editor \
     tools/rom_manifest.json tools/rom_manifest_blue.json \
-    tools/rom_manifest_yellow.json \
+    tools/rom_manifest_yellow.json tools/gen2/rom_manifest_crystal.json \
     -x '*.DS_Store' -x '*/.git/*' -x '*/.DS_Store' \
     -x 'data/generated/*' -x 'assets/generated/*')
   # List once and match against the captured text: piping unzip straight into
@@ -227,6 +227,12 @@ pack_game_love() {
     || fail "game.love is missing the save editor (Edit on a save row would crash)"
   grep -qx "$YELLOW_MANIFEST_RELATIVE" <<< "$archive_entries" \
     || fail "game.love is missing the Yellow ROM import manifest"
+  grep -qx 'tools/gen2/rom_manifest_crystal.json' <<< "$archive_entries" \
+    || fail "game.love is missing the Crystal metadata manifest"
+  grep -qx 'vendor/luagb/gameboy/init.lua' <<< "$archive_entries" \
+    || fail "game.love is missing the Crystal Lua runtime"
+  grep -qx 'vendor/luagb/LICENSE.txt' <<< "$archive_entries" \
+    || fail "game.love is missing the LuaGB license"
   # This gate exists because the launcher's UI toolkit once lived outside
   # src/ (libs/flexlove) and was added to scripts/build.sh's payload and to
   # no other packager, so Android and iOS built an APK/IPA whose launcher
