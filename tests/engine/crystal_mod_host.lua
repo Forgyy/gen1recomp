@@ -64,7 +64,8 @@ local Api = require("src.gen2.CrystalModApi")
 local handled = {}
 Api.register("TEST", {
   draw = function(_, _, width, height, state)
-    handled.draw = { width, height, state.mapGroup, state.inBattle }
+    handled.draw = { width, height, state.mapGroup, state.inBattle,
+      state.mapBlocksPointer, state.readRom(2, 0x4003), state.windowEnabled }
     return true
   end,
   keypressed = function(_, _, key)
@@ -76,18 +77,27 @@ Api.register("TEST", {
 local raw = {}
 raw[0xdcb5] = 24
 raw[0xd22d] = 1
+raw[0xd1a1] = 0x34
+raw[0xd1a2] = 0x52
+local rom = { [2 * 0x4000 + 3] = 0x9a }
 local game = { core = {
   getFrameImage = function() return "frame" end,
   gameboy = {
     memory = { work_ram_0 = {}, work_ram_1_raw = raw },
     io = { ram = { [0x43] = 7, [0x42] = 9 } },
-    graphics = { vram = {}, oam_raw = {} },
+    cartridge = { raw_data = rom },
+    graphics = { vram = {}, oam_raw = {}, registers = {
+      window_enabled = true,
+    } },
   },
 } }
 check(Api.draw(game, 960, 864), "registered Crystal renderer owns the frame")
 eq(handled.draw[1], 960, "renderer receives output width")
 eq(handled.draw[3], 24, "snapshot reads banked Crystal WRAM")
 check(handled.draw[4], "snapshot exposes battle state")
+eq(handled.draw[5], 0x5234, "snapshot reads little-endian Crystal pointers")
+eq(handled.draw[6], 0x9a, "snapshot exposes banked ROM reads")
+check(handled.draw[7], "snapshot exposes PPU layer state")
 check(Api.keypressed(game, "3"), "renderer can claim a Crystal hotkey")
 eq(handled.key, "3", "renderer receives the claimed key")
 

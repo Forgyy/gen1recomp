@@ -13,10 +13,25 @@ local WRAM = {
   battleType = { 1, 0xd230 },
   timeOfDay = { 1, 0xd269 },
   playerDirection = { 1, 0xd4de },
+  playerMetatileY = { 1, 0xd196 },
+  playerMetatileX = { 1, 0xd197 },
   playerX = { 1, 0xd4e6 },
   playerY = { 1, 0xd4e7 },
   enemySpecies = { 1, 0xd206 },
   playerSpecies = { 0, 0xc62c },
+}
+
+local WORDS = {
+  overworldMapAnchor = { 1, 0xd194 },
+  mapBlocksPointer = { 1, 0xd1a1 },
+  tilesetBlocksAddress = { 1, 0xd1dd },
+  tilesetCollisionAddress = { 1, 0xd1e0 },
+}
+
+local BYTES = {
+  mapBlocksBank = { 1, 0xd1a0 },
+  tilesetBlocksBank = { 1, 0xd1dc },
+  tilesetCollisionBank = { 1, 0xd1df },
 }
 
 local function readWram(gameboy, spec)
@@ -25,6 +40,25 @@ local function readWram(gameboy, spec)
   if not memory then return 0 end
   if bank == 0 then return memory.work_ram_0[address] or 0 end
   return memory.work_ram_1_raw[address + (bank - 1) * 0x1000] or 0
+end
+
+local function readWord(gameboy, spec)
+  local low = readWram(gameboy, spec)
+  return low + readWram(gameboy, { spec[1], spec[2] + 1 }) * 0x100
+end
+
+local function readRom(gameboy, bank, address)
+  local cartridge = gameboy and gameboy.cartridge
+  local rom = cartridge and cartridge.raw_data
+  if not rom then return 0 end
+  bank, address = tonumber(bank) or 0, tonumber(address) or 0
+  local offset
+  if address < 0x4000 then
+    offset = address
+  else
+    offset = bank * 0x4000 + (address - 0x4000)
+  end
+  return rom[offset] or 0
 end
 
 local function selected()
@@ -65,9 +99,27 @@ function CrystalModApi.snapshot(game)
     lcdc = io and (io.ram[0x40] or 0) or 0,
     vram = graphics.vram,
     oam = graphics.oam_raw,
+    backgroundMap = graphics.registers and graphics.registers.background_tilemap,
+    backgroundAttributes = graphics.registers and graphics.registers.background_attr,
+    windowMap = graphics.registers and graphics.registers.window_tilemap,
+    windowAttributes = graphics.registers and graphics.registers.window_attr,
+    backgroundEnabled = graphics.registers
+      and graphics.registers.background_enabled ~= false,
+    windowEnabled = graphics.registers and graphics.registers.window_enabled == true,
+    spritesEnabled = graphics.registers and graphics.registers.sprites_enabled == true,
+    largeSprites = graphics.registers and graphics.registers.large_sprites == true,
+    spriteCache = graphics.cache and graphics.cache.oam,
+    bgPalettes = graphics.palette and graphics.palette.color_bg,
+    objectPalettes = graphics.palette and graphics.palette.color_obj,
     frame = graphics.vblank_count or 0,
   }
   for name, spec in pairs(WRAM) do state[name] = readWram(gameboy, spec) end
+  for name, spec in pairs(BYTES) do state[name] = readWram(gameboy, spec) end
+  for name, spec in pairs(WORDS) do state[name] = readWord(gameboy, spec) end
+  state.readRom = function(bank, address) return readRom(gameboy, bank, address) end
+  state.readWram = function(bank, address)
+    return readWram(gameboy, { bank, address })
+  end
   state.inBattle = state.battleMode ~= 0
   return state
 end
