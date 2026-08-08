@@ -8,11 +8,12 @@ mod.options:define({
   { key = "angle", label = "V-ANGLE", type = "choice", default = "DIORAMA",
     choices = { "FLAT", "DIORAMA", "STEEP" } },
   { key = "grid", label = "V-GRID", type = "toggle", default = true },
+  { key = "actors", label = "V-ACTORS", type = "toggle", default = true },
   { key = "battles", label = "3D-BTL", type = "choice", default = "CLASSIC",
     choices = { "CLASSIC", "DIORAMA" } },
 })
 
-local renderer = { mesh = nil, vertices = {}, gridLines = {} }
+local renderer = { mesh = nil, actorMesh = nil, vertices = {}, gridLines = {} }
 
 local function option(key, fallback)
   local value = mod.options:get(key)
@@ -191,6 +192,43 @@ local function projection(width, height, angle)
   end, scale
 end
 
+local function buildActorVertices(state, project, scale, heights)
+  if not state.spriteImage or not option("actors", true)
+      or type(state.spriteCache) ~= "table" then
+    return {}, 0
+  end
+  local spriteHeight = state.largeSprites and 16 or 8
+  local actors = {}
+  for index = 0, 39 do
+    local sprite = state.spriteCache[index]
+    local x, y = sprite and tonumber(sprite.x), sprite and tonumber(sprite.y)
+    if x and y and x >= 0 and y >= 0 and x + 8 <= 160
+        and y + spriteHeight <= 144 then
+      actors[#actors + 1] = { x = x, y = y, bottom = y + spriteHeight }
+    end
+  end
+  table.sort(actors, function(a, b)
+    if a.bottom ~= b.bottom then return a.bottom < b.bottom end
+    return a.x < b.x
+  end)
+
+  local vertices, white = {}, { 1, 1, 1, 1 }
+  for _, actor in ipairs(actors) do
+    local tx = math.max(0, math.min(19, math.floor((actor.x + 4) / 8)))
+    local ty = math.max(0, math.min(17, math.floor((actor.bottom - 1) / 8)))
+    local lift = heights[ty] and heights[ty][tx] or 0
+    local left, baseY = project(actor.x, actor.bottom, lift)
+    local right = project(actor.x + 8, actor.bottom, lift)
+    local topY = baseY - spriteHeight * scale
+    local u1, v1 = actor.x / 160, actor.y / 144
+    local u2, v2 = (actor.x + 8) / 160, actor.bottom / 144
+    addQuad(vertices,
+      { left, topY, u1, v1 }, { right, topY, u2, v1 },
+      { right, baseY, u2, v2 }, { left, baseY, u1, v2 }, white)
+  end
+  return vertices, #actors
+end
+
 function renderer:rebuild(width, height, state)
   local angle = tostring(option("angle", "DIORAMA")):upper()
   local depth = math.floor(tonumber(option("depth", 3)) or 3)
@@ -244,7 +282,13 @@ function renderer:rebuild(width, height, state)
 
   self.vertices, self.gridLines, self.scale = vertices, gridLines, scale
   self.mesh = love.graphics.newMesh(vertices, "triangles", "stream")
-  self.mesh:setTexture(state.image)
+  self.mesh:setTexture(state.backgroundImage or state.image)
+  local actorVertices, actorCount = buildActorVertices(state, project, scale, heights)
+  self.actorMesh, self.actorCount = nil, actorCount
+  if #actorVertices > 0 then
+    self.actorMesh = love.graphics.newMesh(actorVertices, "triangles", "stream")
+    self.actorMesh:setTexture(state.spriteImage)
+  end
 end
 
 function renderer:enabled()
@@ -291,6 +335,10 @@ function renderer:draw(game, width, height, state)
       love.graphics.line(line[1], line[2], line[3], line[4],
         line[5], line[6], line[7], line[8], line[1], line[2])
     end
+  end
+  if self.actorMesh then
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.draw(self.actorMesh)
   end
   love.graphics.pop()
   return true

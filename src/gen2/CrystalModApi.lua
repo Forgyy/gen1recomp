@@ -91,6 +91,9 @@ function CrystalModApi.snapshot(game)
     generation = 2,
     game = "crystal",
     image = core:getFrameImage(),
+    backgroundImage = core.getBackgroundImage and core:getBackgroundImage()
+      or core:getFrameImage(),
+    spriteImage = core.getSpriteImage and core:getSpriteImage() or nil,
     screenWidth = 160,
     screenHeight = 144,
     scrollX = io and (io.ram[0x43] or 0) or 0,

@@ -77,12 +77,25 @@ function LuaGbCore:_createFrameImage()
   self.imageData = love.image.newImageData(160, 144, "rgba8")
   self.image = love.graphics.newImage(self.imageData)
   self.image:setFilter("nearest", "nearest")
+  self.backgroundImageData = love.image.newImageData(160, 144, "rgba8")
+  self.backgroundImage = love.graphics.newImage(self.backgroundImageData)
+  self.backgroundImage:setFilter("nearest", "nearest")
+  self.spriteImageData = love.image.newImageData(160, 144, "rgba8")
+  self.spriteImage = love.graphics.newImage(self.spriteImageData)
+  self.spriteImage:setFilter("nearest", "nearest")
   local ok, ffi = pcall(require, "ffi")
   if ok and self.imageData.getFFIPointer then
     pcall(ffi.cdef, "typedef struct { unsigned char r, g, b, a; } gen2_pixel;")
-    local castOk, pointer = pcall(ffi.cast, "gen2_pixel *",
-      self.imageData:getFFIPointer())
-    if castOk then self.pixelPointer = pointer end
+    local castOk, pointer, backgroundPointer, spritePointer = pcall(function()
+      return ffi.cast("gen2_pixel *", self.imageData:getFFIPointer()),
+        ffi.cast("gen2_pixel *", self.backgroundImageData:getFFIPointer()),
+        ffi.cast("gen2_pixel *", self.spriteImageData:getFFIPointer())
+    end)
+    if castOk then
+      self.pixelPointer = pointer
+      self.backgroundPixelPointer = backgroundPointer
+      self.spritePixelPointer = spritePointer
+    end
   end
 end
 
@@ -183,12 +196,23 @@ end
 function LuaGbCore:_refreshImage()
   if not self.frameDirty then return end
   local screen = self.gameboy.graphics.game_screen
+  local background = self.gameboy.graphics.background_screen or screen
+  local sprites = self.gameboy.graphics.sprite_screen
   if self.pixelPointer then
     for y = 0, 143 do
       for x = 0, 159 do
         local source = screen[y][x]
         local pixel = self.pixelPointer[y * 160 + x]
         pixel.r, pixel.g, pixel.b, pixel.a = source[1], source[2], source[3], 255
+        local bg = background[y][x]
+        local bgPixel = self.backgroundPixelPointer[y * 160 + x]
+        bgPixel.r, bgPixel.g, bgPixel.b, bgPixel.a = bg[1], bg[2], bg[3], 255
+        local actor = sprites and sprites[y][x] or nil
+        local actorPixel = self.spritePixelPointer[y * 160 + x]
+        actorPixel.r = actor and actor[1] or 0
+        actorPixel.g = actor and actor[2] or 0
+        actorPixel.b = actor and actor[3] or 0
+        actorPixel.a = actor and actor[4] or 0
       end
     end
   else
@@ -197,16 +221,35 @@ function LuaGbCore:_refreshImage()
         local source = screen[y][x]
         self.imageData:setPixel(x, y, source[1] / 255, source[2] / 255,
           source[3] / 255, 1)
+        local bg = background[y][x]
+        self.backgroundImageData:setPixel(x, y, bg[1] / 255, bg[2] / 255,
+          bg[3] / 255, 1)
+        local actor = sprites and sprites[y][x] or nil
+        self.spriteImageData:setPixel(x, y,
+          (actor and actor[1] or 0) / 255, (actor and actor[2] or 0) / 255,
+          (actor and actor[3] or 0) / 255, (actor and actor[4] or 0) / 255)
       end
     end
   end
   self.image:replacePixels(self.imageData)
+  self.backgroundImage:replacePixels(self.backgroundImageData)
+  self.spriteImage:replacePixels(self.spriteImageData)
   self.frameDirty = false
 end
 
 function LuaGbCore:getFrameImage()
   self:_refreshImage()
   return self.image
+end
+
+function LuaGbCore:getBackgroundImage()
+  self:_refreshImage()
+  return self.backgroundImage
+end
+
+function LuaGbCore:getSpriteImage()
+  self:_refreshImage()
+  return self.spriteImage
 end
 
 function LuaGbCore:draw(width, height, options)

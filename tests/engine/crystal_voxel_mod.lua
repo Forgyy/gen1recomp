@@ -23,7 +23,7 @@ local Api = require("src.gen2.CrystalModApi")
 local chunk = assert(loadfile("mods/crystal_voxel/main.lua"))
 chunk(fakeMod)
 
-eq(#schema, 5, "the Crystal options overlay receives every voxel setting")
+eq(#schema, 6, "the Crystal options overlay receives every voxel setting")
 check(fakeMod.exports.renderer, "the mod exports its renderer for diagnostics")
 local renderer = fakeMod.exports.renderer
 
@@ -80,10 +80,12 @@ mapState.playerX, mapState.playerY = 4, 4
 eq(renderer.visibleCollisionAt(mapState, 9, 8), 0x07,
   "the player-centered screen cell maps to Crystal's padded coordinates")
 
-local meshTexture
+local meshTextures = {}
 love.graphics.newMesh = function(vertices)
-  check(#vertices > 2000, "the live frame is split into a full tile mesh")
-  return { setTexture = function(_, texture) meshTexture = texture end }
+  check(#vertices >= 6, "every generated mesh contains complete triangles")
+  return { setTexture = function(_, texture)
+    meshTextures[#meshTextures + 1] = texture
+  end }
 end
 love.graphics.push = function() end
 love.graphics.pop = function() end
@@ -105,10 +107,18 @@ local game = {
   _setNotice = function(_, message) notices[#notices + 1] = message end,
   core = {
     getFrameImage = function() return "crystal-frame" end,
+    getBackgroundImage = function() return "crystal-background" end,
+    getSpriteImage = function() return "crystal-sprites" end,
     gameboy = {
       memory = { work_ram_0 = {}, work_ram_1_raw = {} },
       io = { ram = { [0x40] = 0x08, [0x42] = 3, [0x43] = 5 } },
-      graphics = { vram = vram, oam_raw = {}, vblank_count = 10 },
+      graphics = {
+        vram = vram, oam_raw = {}, vblank_count = 10,
+        cache = { oam = { [0] = { x = 72, y = 64 } } },
+        registers = {
+          window_enabled = false, sprites_enabled = true, large_sprites = true,
+        },
+      },
     },
   },
 }
@@ -117,7 +127,7 @@ check(not Api.draw(game, 960, 864),
   "title and menu frames stay in faithful 2D")
 game.core.gameboy.memory.work_ram_1_raw[0xdcb5] = 1
 game.core.gameboy.memory.work_ram_1_raw[0xdcb6] = 1
-game.core.gameboy.graphics.registers = { window_enabled = true }
+game.core.gameboy.graphics.registers.window_enabled = true
 check(not Api.draw(game, 960, 864),
   "dialogue windows stay in faithful readable 2D")
 game.core.gameboy.io.ram[0x4a] = 144
@@ -125,7 +135,11 @@ check(Api.draw(game, 960, 864),
   "a hidden off-screen window does not disable the overworld diorama")
 game.core.gameboy.graphics.registers.window_enabled = false
 check(Api.draw(game, 960, 864), "the voxel renderer owns a Crystal frame")
-eq(meshTexture, "crystal-frame", "the mesh uses the live emulator image")
+eq(meshTextures[#meshTextures - 1], "crystal-background",
+  "terrain uses the sprite-free emulator layer")
+eq(meshTextures[#meshTextures], "crystal-sprites",
+  "upright actors use the transparent OAM layer")
+eq(renderer.actorCount, 1, "one visible OAM piece becomes one actor standee")
 check(Api.keypressed(game, "3"), "the renderer claims its voxel hotkey")
 eq(game.options.modOptions.CRYSTAL_VOXEL.enabled, false,
   "the voxel hotkey persists the disabled state")

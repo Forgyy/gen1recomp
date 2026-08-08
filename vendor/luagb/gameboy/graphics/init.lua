@@ -30,12 +30,18 @@ function Graphics.new(modules)
   graphics.lcdstat = false
 
   graphics.game_screen = {}
+  graphics.background_screen = {}
+  graphics.sprite_screen = {}
 
   graphics.clear_screen = function()
     for y = 0, 143 do
       graphics.game_screen[y] = {}
+      graphics.background_screen[y] = {}
+      graphics.sprite_screen[y] = {}
       for x = 0, 159 do
         graphics.game_screen[y][x] = {255, 255, 255}
+        graphics.background_screen[y][x] = {255, 255, 255}
+        graphics.sprite_screen[y][x] = {0, 0, 0, 0}
       end
     end
   end
@@ -445,6 +451,12 @@ function Graphics.new(modules)
       scanline_data.bg_index[scanline_data.x] = bg_index
       scanline_data.bg_priority[scanline_data.x] = scanline_data.active_attr.priority
 
+      local background = graphics.background_screen[ly][dx]
+      background[1] = game_screen[ly][dx][1]
+      background[2] = game_screen[ly][dx][2]
+      background[3] = game_screen[ly][dx][3]
+      graphics.sprite_screen[ly][dx][4] = 0
+
       scanline_data.x = scanline_data.x  + 1
       scanline_data.sub_x = scanline_data.sub_x  + 1
       if scanline_data.sub_x > 7 then
@@ -581,6 +593,11 @@ function Graphics.new(modules)
               game_screen[scanline][display_x][1] = subpixel_color[1]
               game_screen[scanline][display_x][2] = subpixel_color[2]
               game_screen[scanline][display_x][3] = subpixel_color[3]
+              local sprite_pixel = graphics.sprite_screen[scanline][display_x]
+              sprite_pixel[1] = subpixel_color[1]
+              sprite_pixel[2] = subpixel_color[2]
+              sprite_pixel[3] = subpixel_color[3]
+              sprite_pixel[4] = 255
             end
           end
         end
