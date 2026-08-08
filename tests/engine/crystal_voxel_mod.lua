@@ -25,6 +25,49 @@ chunk(fakeMod)
 
 eq(#schema, 5, "the Crystal options overlay receives every voxel setting")
 check(fakeMod.exports.renderer, "the mod exports its renderer for diagnostics")
+local renderer = fakeMod.exports.renderer
+
+local rom = {}
+local blockBase, collisionBase = 0x5000, 0x6000
+rom[blockBase] = 2
+rom[blockBase + 1] = 5
+rom[collisionBase + 2 * 4] = 0x07
+rom[collisionBase + 2 * 4 + 1] = 0x00
+rom[collisionBase + 2 * 4 + 2] = 0x7a
+rom[collisionBase + 2 * 4 + 3] = 0x90
+rom[collisionBase + 5 * 4] = 0x29
+local mapState = {
+  mapWidth = 2, mapHeight = 1, mapBlocksBank = 1,
+  mapBlocksPointer = blockBase, tilesetCollisionBank = 1,
+  tilesetCollisionAddress = collisionBase,
+  readRom = function(_, address) return rom[address] or 0 end,
+}
+eq(renderer.mapCollisionAt(mapState, 0, 0), 0x07,
+  "block collision exposes solid walls")
+eq(renderer.mapCollisionAt(mapState, 1, 0), 0x00,
+  "block collision exposes walkable floors")
+eq(renderer.mapCollisionAt(mapState, 0, 1), 0x7a,
+  "block collision selects the lower metatile quadrant")
+eq(renderer.mapCollisionAt(mapState, 2, 0), 0x29,
+  "block collision advances through map blocks")
+eq(renderer.mapCollisionAt(mapState, -1, 0), nil,
+  "connected-map edges can fall back until their border data is available")
+eq(renderer.heightForCollision(0x00, 6), 0,
+  "floors remain on the walk plane")
+eq(renderer.heightForCollision(0x07, 6), 6,
+  "walls use full voxel depth")
+eq(renderer.heightForCollision(0x90, 6), 6,
+  "counters and furniture use full voxel depth")
+eq(renderer.heightForCollision(0x7a, 6), 2,
+  "stairs receive a shallow rise")
+eq(renderer.heightForCollision(0xa0, 6), 3,
+  "ledges receive a half-height curb")
+eq(renderer.heightForCollision(0x29, 6), 0,
+  "water remains on a low plane")
+
+mapState.playerX, mapState.playerY = 4, 4
+eq(renderer.visibleCollisionAt(mapState, 9, 8), 0x07,
+  "the player-centered screen cell maps to Crystal's padded coordinates")
 
 local meshTexture
 love.graphics.newMesh = function(vertices)

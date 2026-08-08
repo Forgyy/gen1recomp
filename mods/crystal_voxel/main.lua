@@ -57,7 +57,7 @@ local function addQuad(vertices, a, b, c, d, color)
   addTriangle(vertices, a, c, d, color)
 end
 
-local function tileHeight(state, tx, ty, depth)
+local function fallbackTileHeight(state, tx, ty, depth)
   local mapBase = bitAnd(state.lcdc or 0, 0x08) ~= 0 and 0x9c00 or 0x9800
   local mapX = (math.floor((state.scrollX or 0) / 8) + tx) % 32
   local mapY = (math.floor((state.scrollY or 0) / 8) + ty) % 32
@@ -71,6 +71,85 @@ local function tileHeight(state, tx, ty, depth)
   if material <= 6 then return math.max(1, math.floor(depth * 0.45)) end
   if material <= 9 then return math.max(1, math.floor(depth * 0.75)) end
   return depth
+end
+
+-- Crystal maps are built from 32x32-pixel blocks. Every block has four
+-- 16x16 collision cells, and those values describe the actual terrain.
+-- wPlayerMapX/Y include the engine's four-cell connection padding. On the
+-- Game Boy screen the player's standing cell begins at pixel 72,64.
+local function mapCollisionAt(state, cellX, cellY)
+  local width, height = tonumber(state.mapWidth) or 0,
+    tonumber(state.mapHeight) or 0
+  if cellX < 0 or cellY < 0 or cellX >= width * 2 or cellY >= height * 2 then
+    return nil
+  end
+  if type(state.readRom) ~= "function"
+      or (tonumber(state.mapBlocksPointer) or 0) == 0
+      or (tonumber(state.tilesetCollisionAddress) or 0) == 0 then
+    return nil
+  end
+
+  local blockX, blockY = math.floor(cellX / 2), math.floor(cellY / 2)
+  local blockOffset = blockY * width + blockX
+  local block = state.readRom(state.mapBlocksBank or 0,
+    (state.mapBlocksPointer or 0) + blockOffset)
+  local quadrant = (cellY % 2) * 2 + (cellX % 2)
+  return state.readRom(state.tilesetCollisionBank or 0,
+    (state.tilesetCollisionAddress or 0) + block * 4 + quadrant), block
+end
+
+local function visibleCollisionAt(state, tx, ty)
+  local playerX = (tonumber(state.playerX) or 4) - 4
+  local playerY = (tonumber(state.playerY) or 4) - 4
+  local cellX = playerX + math.floor((tx * 8 - 72) / 16)
+  local cellY = playerY + math.floor((ty * 8 - 64) / 16)
+  return mapCollisionAt(state, cellX, cellY)
+end
+
+local function heightForCollision(collision, depth)
+  if collision == nil then return nil end
+  collision = tonumber(collision) or 0
+  depth = math.max(1, tonumber(depth) or 1)
+  local high = math.floor(collision / 0x10) * 0x10
+
+  -- Ordinary ground, doors, carpets, ladders, caves, and pits stay on the
+  -- walk plane. Stairs rise gently so their art still reads as stairs.
+  if collision == 0x00 or high == 0x70 or high == 0x40 or high == 0x50
+      or high == 0x60 then
+    if collision == 0x73 or collision == 0x7a then
+      return math.max(1, math.floor(depth * 0.35))
+    end
+    return 0
+  end
+
+  -- Grass has volume without becoming an obstacle. Water/current/ice stay
+  -- low, preserving coastlines and surf paths as a distinct plane.
+  if collision == 0x10 or collision == 0x14 or collision == 0x18
+      or collision == 0x1c then
+    return math.max(1, math.floor(depth * 0.25))
+  end
+  if high == 0x20 or high == 0x30 then return 0 end
+
+  -- Hop tiles form a curb; directional walls and buoys are taller barriers.
+  if high == 0xa0 then return math.max(1, math.floor(depth * 0.50)) end
+  if high == 0xb0 or high == 0xc0 then
+    return math.max(1, math.floor(depth * 0.75))
+  end
+
+  -- Walls, trees, counters, shelves, PCs, maps, radios, TVs, windows, and
+  -- other solid/interactable scenery stand at full voxel depth.
+  if collision == 0x07 or collision == 0x12 or collision == 0x15
+      or collision == 0x1a or collision == 0x1d or high == 0x90 then
+    return depth
+  end
+  return math.max(1, math.floor(depth * 0.60))
+end
+
+local function tileHeight(state, tx, ty, depth)
+  local collision = visibleCollisionAt(state, tx, ty)
+  local height = heightForCollision(collision, depth)
+  if height ~= nil then return height end
+  return fallbackTileHeight(state, tx, ty, depth)
 end
 
 local function projection(width, height, angle)
@@ -96,25 +175,38 @@ function renderer:rebuild(width, height, state)
   local topColor = { 1, 1, 1, 1 }
   local frontColor = { 0.40, 0.44, 0.54, 1 }
   local sideColor = { 0.25, 0.29, 0.39, 1 }
+  local heights = {}
+
+  for ty = 0, 17 do
+    heights[ty] = {}
+    for tx = 0, 19 do
+      heights[ty][tx] = tileHeight(state, tx, ty, depth)
+    end
+  end
 
   for ty = 0, 17 do
     for tx = 0, 19 do
       local px, py = tx * 8, ty * 8
-      local lift = tileHeight(state, tx, ty, depth)
+      local lift = heights[ty][tx]
+      local frontLift = heights[ty + 1] and heights[ty + 1][tx] or 0
+      local sideLift = heights[ty][tx + 1] or 0
       local x1, y1 = project(px, py, lift)
       local x2, y2 = project(px + 8, py, lift)
       local x3, y3 = project(px + 8, py + 8, lift)
       local x4, y4 = project(px, py + 8, lift)
-      local bx2, by2 = project(px + 8, py, 0)
-      local bx3, by3 = project(px + 8, py + 8, 0)
-      local bx4, by4 = project(px, py + 8, 0)
       local u1, v1, u2, v2 = px / 160, py / 144,
         (px + 8) / 160, math.min(1, (py + 8) / 144)
 
-      if lift > 0 then
+      if lift > frontLift then
+        local bx3, by3 = project(px + 8, py + 8, frontLift)
+        local bx4, by4 = project(px, py + 8, frontLift)
         addQuad(vertices,
           { x4, y4, u1, v2 }, { x3, y3, u2, v2 },
           { bx3, by3, u2, v2 }, { bx4, by4, u1, v2 }, frontColor)
+      end
+      if lift > sideLift then
+        local bx2, by2 = project(px + 8, py, sideLift)
+        local bx3, by3 = project(px + 8, py + 8, sideLift)
         addQuad(vertices,
           { x2, y2, u2, v1 }, { bx2, by2, u2, v1 },
           { bx3, by3, u2, v2 }, { x3, y3, u2, v2 }, sideColor)
@@ -191,4 +283,7 @@ function renderer:wheelmoved(game, _, dy)
 end
 
 CrystalModApi.register(mod.id, renderer)
+renderer.mapCollisionAt = mapCollisionAt
+renderer.visibleCollisionAt = visibleCollisionAt
+renderer.heightForCollision = heightForCollision
 mod.exports.renderer = renderer

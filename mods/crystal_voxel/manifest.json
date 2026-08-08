@@ -1,7 +1,7 @@
 {
   "id": "CRYSTAL_VOXEL",
   "name": "Crystal Voxel Diorama",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "api": 2,
   "entry": "main.lua",
   "profile": "content",
@@ -14,5 +14,5 @@
   "conflicts": [],
   "permissions": ["engine_internals"],
   "affects_link": false,
-  "description": "Renders Pokemon Crystal as a live VRAM-driven voxel diorama."
+  "description": "Renders Pokemon Crystal as a map-aware voxel diorama using native block collision data."
 }
