@@ -7,8 +7,7 @@ package.path = "./?.lua;./?/init.lua;" .. package.path
 
 local T = require("tests.modkit")
 local Runtime = require("src.mods.Runtime")
-local Data = require("src.core.Data")
-Data:load()
+local Data = T.fixtures.fresh()
 
 local ID = "qol_pack"
 local run = T.sdk.loadMod("mods/qol_pack", { data = Data })
@@ -19,8 +18,8 @@ local opts = run.loader.modOptions[ID] or {}
 run.loader.modOptions[ID] = opts
 
 -- ---- mart discount: on by default (50%), applied to every priced item
--- balance_tweaks proves POTION's fixture price is 300; half is 150.
-T.eq(Data.items.POTION.price, 150, "POTION discounted 50% at load")
+-- The ROM-free fixture potion costs 300; the default discount halves it.
+T.eq(Data.items.FIX_POTION.price, 150, "fixture potion discounted 50% at load")
 
 -- ---- EXP rate: parity at 1x, scaled otherwise. vanilla returns a fixed 100.
 local function expWith(rate)
