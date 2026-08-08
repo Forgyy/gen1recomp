@@ -9,6 +9,7 @@ local WRAM = {
   mapWidth = { 1, 0xd19f },
   mapHeight = { 1, 0xd19e },
   tileset = { 1, 0xd199 },
+  mapBorderBlock = { 1, 0xd19d },
   battleMode = { 1, 0xd22d },
   battleType = { 1, 0xd230 },
   timeOfDay = { 1, 0xd269 },
@@ -112,6 +113,7 @@ function CrystalModApi.snapshot(game)
     bgPalettes = graphics.palette and graphics.palette.color_bg,
     objectPalettes = graphics.palette and graphics.palette.color_obj,
     frame = graphics.vblank_count or 0,
+    overworldMapBlocksAddress = 0xc800,
   }
   for name, spec in pairs(WRAM) do state[name] = readWram(gameboy, spec) end
   for name, spec in pairs(BYTES) do state[name] = readWram(gameboy, spec) end

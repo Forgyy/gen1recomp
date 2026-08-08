@@ -36,12 +36,21 @@ rom[collisionBase + 2 * 4 + 1] = 0x00
 rom[collisionBase + 2 * 4 + 2] = 0x7a
 rom[collisionBase + 2 * 4 + 3] = 0x90
 rom[collisionBase + 5 * 4] = 0x29
+rom[collisionBase + 9 * 4 + 1] = 0x07
+local wram = {}
+local worldBase, worldStride = 0xc800, 8
+wram[worldBase + 3 * worldStride + 2] = 9
+wram[worldBase + 3 * worldStride + 3] = 2
+wram[worldBase + 3 * worldStride + 4] = 5
 local mapState = {
   mapWidth = 2, mapHeight = 1, mapBlocksBank = 1,
   mapBlocksPointer = blockBase, tilesetCollisionBank = 1,
-  tilesetCollisionAddress = collisionBase,
+  tilesetCollisionAddress = collisionBase, mapBorderBlock = 7,
   readRom = function(_, address) return rom[address] or 0 end,
+  readWram = function(_, address) return wram[address] or 0 end,
 }
+eq(renderer.mapBlockAt(mapState, 0, 0), 2,
+  "the live world buffer supplies the current map block")
 eq(renderer.mapCollisionAt(mapState, 0, 0), 0x07,
   "block collision exposes solid walls")
 eq(renderer.mapCollisionAt(mapState, 1, 0), 0x00,
@@ -50,8 +59,10 @@ eq(renderer.mapCollisionAt(mapState, 0, 1), 0x7a,
   "block collision selects the lower metatile quadrant")
 eq(renderer.mapCollisionAt(mapState, 2, 0), 0x29,
   "block collision advances through map blocks")
-eq(renderer.mapCollisionAt(mapState, -1, 0), nil,
-  "connected-map edges can fall back until their border data is available")
+eq(renderer.mapCollisionAt(mapState, -1, 0), 0x07,
+  "the padded world buffer supplies connected-map edges")
+eq(renderer.mapBlockAt(mapState, 0, -1), 7,
+  "empty connection space resolves to Crystal's border block")
 eq(renderer.heightForCollision(0x00, 6), 0,
   "floors remain on the walk plane")
 eq(renderer.heightForCollision(0x07, 6), 6,
@@ -106,6 +117,13 @@ check(not Api.draw(game, 960, 864),
   "title and menu frames stay in faithful 2D")
 game.core.gameboy.memory.work_ram_1_raw[0xdcb5] = 1
 game.core.gameboy.memory.work_ram_1_raw[0xdcb6] = 1
+game.core.gameboy.graphics.registers = { window_enabled = true }
+check(not Api.draw(game, 960, 864),
+  "dialogue windows stay in faithful readable 2D")
+game.core.gameboy.io.ram[0x4a] = 144
+check(Api.draw(game, 960, 864),
+  "a hidden off-screen window does not disable the overworld diorama")
+game.core.gameboy.graphics.registers.window_enabled = false
 check(Api.draw(game, 960, 864), "the voxel renderer owns a Crystal frame")
 eq(meshTexture, "crystal-frame", "the mesh uses the live emulator image")
 check(Api.keypressed(game, "3"), "the renderer claims its voxel hotkey")

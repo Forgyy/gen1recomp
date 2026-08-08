@@ -77,25 +77,49 @@ end
 -- 16x16 collision cells, and those values describe the actual terrain.
 -- wPlayerMapX/Y include the engine's four-cell connection padding. On the
 -- Game Boy screen the player's standing cell begins at pixel 72,64.
-local function mapCollisionAt(state, cellX, cellY)
+local function mapBlockAt(state, blockX, blockY)
   local width, height = tonumber(state.mapWidth) or 0,
     tonumber(state.mapHeight) or 0
-  if cellX < 0 or cellY < 0 or cellX >= width * 2 or cellY >= height * 2 then
+  local paddedX, paddedY = blockX + 3, blockY + 3
+
+  -- Crystal's live c800 map buffer contains the current map surrounded by
+  -- three blocks of connection data on every side. Prefer it over the ROM:
+  -- map callbacks update this copy when doors, trees, rocks, and other world
+  -- tiles change, and its padding keeps geometry stable between routes.
+  if type(state.readWram) == "function"
+      and paddedX >= 0 and paddedY >= 0
+      and paddedX < width + 6 and paddedY < height + 6 then
+    local stride = width + 6
+    local address = (state.overworldMapBlocksAddress or 0xc800)
+      + paddedY * stride + paddedX
+    local block = state.readWram(0, address)
+    if block == 0 then block = tonumber(state.mapBorderBlock) or 0 end
+    return block, "world"
+  end
+
+  if blockX < 0 or blockY < 0 or blockX >= width or blockY >= height then
     return nil
   end
   if type(state.readRom) ~= "function"
-      or (tonumber(state.mapBlocksPointer) or 0) == 0
-      or (tonumber(state.tilesetCollisionAddress) or 0) == 0 then
+      or (tonumber(state.mapBlocksPointer) or 0) == 0 then
+    return nil
+  end
+  return state.readRom(state.mapBlocksBank or 0,
+    (state.mapBlocksPointer or 0) + blockY * width + blockX), "rom"
+end
+
+local function mapCollisionAt(state, cellX, cellY)
+  if (tonumber(state.tilesetCollisionAddress) or 0) == 0
+      or type(state.readRom) ~= "function" then
     return nil
   end
 
   local blockX, blockY = math.floor(cellX / 2), math.floor(cellY / 2)
-  local blockOffset = blockY * width + blockX
-  local block = state.readRom(state.mapBlocksBank or 0,
-    (state.mapBlocksPointer or 0) + blockOffset)
+  local block, source = mapBlockAt(state, blockX, blockY)
+  if block == nil then return nil end
   local quadrant = (cellY % 2) * 2 + (cellX % 2)
   return state.readRom(state.tilesetCollisionBank or 0,
-    (state.tilesetCollisionAddress or 0) + block * 4 + quadrant), block
+    (state.tilesetCollisionAddress or 0) + block * 4 + quadrant), block, source
 end
 
 local function visibleCollisionAt(state, tx, ty)
@@ -237,6 +261,13 @@ function renderer:draw(game, width, height, state)
       or (tonumber(state.mapNumber) or 0) <= 0 then
     return false
   end
+  -- Crystal draws dialogue boxes and several menus through the Game Boy
+  -- window layer. Keep those frames native and readable; projecting UI text
+  -- across raised terrain is visually broken. A later compositor can layer
+  -- the flat window over the diorama without requiring core changes.
+  if state.windowEnabled and (tonumber(state.windowY) or 0) < 144 then
+    return false
+  end
   if state.inBattle and option("battles", "CLASSIC") ~= "DIORAMA" then
     return false
   end
@@ -283,6 +314,7 @@ function renderer:wheelmoved(game, _, dy)
 end
 
 CrystalModApi.register(mod.id, renderer)
+renderer.mapBlockAt = mapBlockAt
 renderer.mapCollisionAt = mapCollisionAt
 renderer.visibleCollisionAt = visibleCollisionAt
 renderer.heightForCollision = heightForCollision

@@ -15,12 +15,13 @@ emulation, collision, encounters, saves, and scripts remain untouched.
 
 The options overlay exposes voxel mode, depth, camera angle, grid lines, and
 battle presentation. If a GPU cannot create the mesh, the renderer fails safe
-and Crystal falls back to its normal 2D frame.
+and Crystal falls back to its normal 2D frame. Dialogue and Game Boy window
+layers also remain in native 2D so text and menus stay crisp and readable.
 
 ## Scope
 
 This is a playable map-aware compatibility renderer, not yet a full native Gen
-2 scene extraction. At connected-map edges, it falls back to the live tile
-profile until neighboring connection geometry is decoded. The official
-Dramatic Shape mod remains installed separately for Red, Blue, and Yellow
-because its objects and world hooks are specific to Gen 1.
+2 scene extraction. It reads Crystal's padded live world buffer, including
+neighboring map connections and runtime block changes. The official Dramatic
+Shape mod remains installed separately for Red, Blue, and Yellow because its
+objects and world hooks are specific to Gen 1.
