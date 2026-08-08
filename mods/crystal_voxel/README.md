@@ -6,9 +6,10 @@ height comes from Crystal's native map blocks and collision tables, so floors,
 walls, furniture, stairs, ledges, grass, and water keep stable geometry while
 the animated background remains the texture. Player and NPC sprite pieces are
 separated from that background and raised into upright standees, avoiding the
-flat duplicate sprites normally left on the floor. It changes only the
-presentation; emulation, collision, encounters, saves, and scripts remain
-untouched.
+flat duplicate sprites normally left on the floor. Adjacent hardware-sprite
+halves are joined into one solid character card and grounded with a soft
+contact shadow. It changes only the presentation; emulation, collision,
+encounters, saves, and scripts remain untouched.
 
 ## Controls
 

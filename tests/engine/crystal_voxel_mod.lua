@@ -80,9 +80,10 @@ mapState.playerX, mapState.playerY = 4, 4
 eq(renderer.visibleCollisionAt(mapState, 9, 8), 0x07,
   "the player-centered screen cell maps to Crystal's padded coordinates")
 
-local meshTextures = {}
+local meshTextures, meshSizes = {}, {}
 love.graphics.newMesh = function(vertices)
   check(#vertices >= 6, "every generated mesh contains complete triangles")
+  meshSizes[#meshSizes + 1] = #vertices
   return { setTexture = function(_, texture)
     meshTextures[#meshTextures + 1] = texture
   end }
@@ -114,7 +115,10 @@ local game = {
       io = { ram = { [0x40] = 0x08, [0x42] = 3, [0x43] = 5 } },
       graphics = {
         vram = vram, oam_raw = {}, vblank_count = 10,
-        cache = { oam = { [0] = { x = 72, y = 64 } } },
+        cache = { oam = {
+          [0] = { x = 72, y = 64 },
+          [1] = { x = 80, y = 64 },
+        } },
         registers = {
           window_enabled = false, sprites_enabled = true, large_sprites = true,
         },
@@ -139,7 +143,9 @@ eq(meshTextures[#meshTextures - 1], "crystal-background",
   "terrain uses the sprite-free emulator layer")
 eq(meshTextures[#meshTextures], "crystal-sprites",
   "upright actors use the transparent OAM layer")
-eq(renderer.actorCount, 1, "one visible OAM piece becomes one actor standee")
+eq(renderer.actorCount, 1, "adjacent OAM halves become one actor standee")
+eq(renderer.actorPieceCount, 2, "the actor diagnostics retain both OAM halves")
+eq(meshSizes[#meshSizes], 6, "the joined actor is rendered as one solid quad")
 check(Api.keypressed(game, "3"), "the renderer claims its voxel hotkey")
 eq(game.options.modOptions.CRYSTAL_VOXEL.enabled, false,
   "the voxel hotkey persists the disabled state")

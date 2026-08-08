@@ -195,16 +195,37 @@ end
 local function buildActorVertices(state, project, scale, heights)
   if not state.spriteImage or not option("actors", true)
       or type(state.spriteCache) ~= "table" then
-    return {}, 0
+    return {}, 0, {}, 0
   end
   local spriteHeight = state.largeSprites and 16 or 8
-  local actors = {}
+  local pieces = {}
   for index = 0, 39 do
     local sprite = state.spriteCache[index]
     local x, y = sprite and tonumber(sprite.x), sprite and tonumber(sprite.y)
     if x and y and x >= 0 and y >= 0 and x + 8 <= 160
         and y + spriteHeight <= 144 then
-      actors[#actors + 1] = { x = x, y = y, bottom = y + spriteHeight }
+      pieces[#pieces + 1] = {
+        index = index, x = x, y = y, width = 8,
+        bottom = y + spriteHeight,
+      }
+    end
+  end
+  local actors, used = {}, {}
+  for i, piece in ipairs(pieces) do
+    if not used[i] then
+      local actor = {
+        x = piece.x, y = piece.y, width = piece.width,
+        bottom = piece.bottom,
+      }
+      local nextPiece = pieces[i + 1]
+      if nextPiece and not used[i + 1]
+          and nextPiece.index == piece.index + 1 and nextPiece.y == piece.y
+          and math.abs(nextPiece.x - piece.x) == 8 then
+        actor.x = math.min(piece.x, nextPiece.x)
+        actor.width = 16
+        used[i + 1] = true
+      end
+      actors[#actors + 1] = actor
     end
   end
   table.sort(actors, function(a, b)
@@ -212,21 +233,27 @@ local function buildActorVertices(state, project, scale, heights)
     return a.x < b.x
   end)
 
-  local vertices, white = {}, { 1, 1, 1, 1 }
+  local vertices, shadows, white = {}, {}, { 1, 1, 1, 1 }
   for _, actor in ipairs(actors) do
     local tx = math.max(0, math.min(19, math.floor((actor.x + 4) / 8)))
     local ty = math.max(0, math.min(17, math.floor((actor.bottom - 1) / 8)))
     local lift = heights[ty] and heights[ty][tx] or 0
     local left, baseY = project(actor.x, actor.bottom, lift)
-    local right = project(actor.x + 8, actor.bottom, lift)
+    local right = project(actor.x + actor.width, actor.bottom, lift)
     local topY = baseY - spriteHeight * scale
     local u1, v1 = actor.x / 160, actor.y / 144
-    local u2, v2 = (actor.x + 8) / 160, actor.bottom / 144
+    local u2, v2 = (actor.x + actor.width) / 160, actor.bottom / 144
     addQuad(vertices,
       { left, topY, u1, v1 }, { right, topY, u2, v1 },
       { right, baseY, u2, v2 }, { left, baseY, u1, v2 }, white)
+    shadows[#shadows + 1] = {
+      x = (left + right) * 0.5,
+      y = baseY + math.max(1, scale * 0.15),
+      rx = math.max(2, actor.width * scale * 0.38),
+      ry = math.max(1, scale * 0.8),
+    }
   end
-  return vertices, #actors
+  return vertices, #actors, shadows, #pieces
 end
 
 function renderer:rebuild(width, height, state)
@@ -283,8 +310,10 @@ function renderer:rebuild(width, height, state)
   self.vertices, self.gridLines, self.scale = vertices, gridLines, scale
   self.mesh = love.graphics.newMesh(vertices, "triangles", "stream")
   self.mesh:setTexture(state.backgroundImage or state.image)
-  local actorVertices, actorCount = buildActorVertices(state, project, scale, heights)
+  local actorVertices, actorCount, actorShadows, actorPieceCount =
+    buildActorVertices(state, project, scale, heights)
   self.actorMesh, self.actorCount = nil, actorCount
+  self.actorShadows, self.actorPieceCount = actorShadows, actorPieceCount
   if #actorVertices > 0 then
     self.actorMesh = love.graphics.newMesh(actorVertices, "triangles", "stream")
     self.actorMesh:setTexture(state.spriteImage)
@@ -335,6 +364,10 @@ function renderer:draw(game, width, height, state)
       love.graphics.line(line[1], line[2], line[3], line[4],
         line[5], line[6], line[7], line[8], line[1], line[2])
     end
+  end
+  love.graphics.setColor(0.01, 0.015, 0.03, 0.34)
+  for _, shadow in ipairs(self.actorShadows or {}) do
+    love.graphics.ellipse("fill", shadow.x, shadow.y, shadow.rx, shadow.ry)
   end
   if self.actorMesh then
     love.graphics.setColor(1, 1, 1, 1)
