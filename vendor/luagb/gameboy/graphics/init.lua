@@ -431,6 +431,9 @@ function Graphics.new(modules)
         -- DRAW BG PIXEL HERE
         local sub_x = scanline_data.sub_x
         local sub_y = scanline_data.sub_y
+        if scanline_data.active_attr.vertical_flip then
+          sub_y = 7 - sub_y
+        end
         bg_index = scanline_data.active_tile[sub_x][sub_y]
         local active_palette = scanline_data.active_attr.palette[bg_index]
 
@@ -457,11 +460,6 @@ function Graphics.new(modules)
           if scanline_data.bg_tile_y >= 32 then
             scanline_data.bg_tile_y = scanline_data.bg_tile_y - 32
           end
-        end
-
-        local tile_attr = scanline_data.current_map_attr[scanline_data.bg_tile_x][scanline_data.bg_tile_y]
-        if tile_attr.vertical_flip then
-          scanline_data.sub_y = 7 - scanline_data.sub_y
         end
 
         scanline_data.active_attr = scanline_data.current_map_attr[scanline_data.bg_tile_x][scanline_data.bg_tile_y]
@@ -573,7 +571,7 @@ function Graphics.new(modules)
         local display_x = sprite.x + x
         if display_x >= 0 and display_x < 160 then
           local sub_x = x
-          if x_flipped then
+          if sprite.horizontal_flip then
             sub_x = 7 - x
           end
           local subpixel_index = tile[sub_x][sub_y]

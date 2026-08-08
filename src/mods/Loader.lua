@@ -264,7 +264,14 @@ function Loader:_validate()
       if generation == self.generation then supportsGeneration = true break end
     end
     if not supportsGeneration then
-      reason = ("does not support game generation %d"):format(self.generation)
+      -- A shared mods directory naturally contains packages for other game
+      -- generations.  They are not broken and should not pollute the runtime
+      -- error feed; keep them visible to the manager as incompatible while
+      -- excluding them from dependency resolution and entry execution.
+      mod.enabled = false
+      mod.state = "incompatible"
+      mod.failure = ("does not support game generation %d"):format(self.generation)
+      Logger.info("skipped mod %s: %s", manifest.id, mod.failure)
     elseif not self:_exists(mod.path .. "/" .. manifest.entry) then
       reason = "entry file missing: " .. manifest.entry
     elseif manifest.options_schema

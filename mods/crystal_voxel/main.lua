@@ -137,6 +137,14 @@ end
 
 function renderer:draw(game, width, height, state)
   if not state or not state.image then return false end
+  -- Menus, logos, and the boot sequence use the PPU in ways that are visually
+  -- meaningful only as a flat framebuffer.  Crystal does not populate its
+  -- overworld map identity until an actual map is active, so leave those
+  -- screens in faithful 2D instead of extruding UI glyphs into a white slab.
+  if (tonumber(state.mapGroup) or 0) <= 0
+      or (tonumber(state.mapNumber) or 0) <= 0 then
+    return false
+  end
   if state.inBattle and option("battles", "CLASSIC") ~= "DIORAMA" then
     return false
   end
@@ -184,4 +192,3 @@ end
 
 CrystalModApi.register(mod.id, renderer)
 mod.exports.renderer = renderer
-

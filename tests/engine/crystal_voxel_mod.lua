@@ -59,6 +59,10 @@ local game = {
   },
 }
 
+check(not Api.draw(game, 960, 864),
+  "title and menu frames stay in faithful 2D")
+game.core.gameboy.memory.work_ram_1_raw[0xdcb5] = 1
+game.core.gameboy.memory.work_ram_1_raw[0xdcb6] = 1
 check(Api.draw(game, 960, 864), "the voxel renderer owns a Crystal frame")
 eq(meshTexture, "crystal-frame", "the mesh uses the live emulator image")
 check(Api.keypressed(game, "3"), "the renderer claims its voxel hotkey")

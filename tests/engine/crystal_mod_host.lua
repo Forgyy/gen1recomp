@@ -57,7 +57,8 @@ loader:load({ generation = 2 })
 local byId = {}
 for _, status in ipairs(loader:status().available) do byId[status.id] = status end
 eq(byId.GEN2.state, "loaded", "a Gen 2 mod loads in Crystal")
-eq(byId.GEN1.state, "invalid", "a legacy Gen 1 mod stays isolated")
+eq(byId.GEN1.state, "incompatible", "a legacy Gen 1 mod stays isolated")
+eq(#loader.errors, 0, "other-generation mods do not become boot errors")
 
 package.loaded["src.gen2.CrystalModApi"] = nil
 local Api = require("src.gen2.CrystalModApi")

@@ -1,7 +1,7 @@
 # Crystal Capability Status
 
 This branch combines the latest `bryanthaboi/gen1recomp` `dev` branch with the
-three commits from Forgyy's `codex/gen2-crystal-foundation` branch.
+four commits from Forgyy's `codex/gen2-crystal-foundation` branch.
 
 ## Working foundation
 
@@ -33,9 +33,12 @@ registries.
 
 - all dedicated Crystal engine tests pass: version routing, metadata manifest,
   saves, RTC, mod host, mod options, and Windows launcher routing
-- Crystal Voxel Diorama: 9/9 dedicated checks pass
+- Crystal Voxel Diorama: 10/10 dedicated checks pass, including the 2D
+  title/menu fallback
 - Quality of Life Pack: 16/16 checks pass against imported Red data
 - canonical Red ROM import smoke test exits successfully under LÖVE 11.5
-- no canonical Crystal ROM was found locally, so an end-to-end Crystal boot and
-  screenshot remains to be run when the user supplies/imports that ROM
-
+- canonical Crystal v1.0 verifies all 388 map pointer chains, imports through
+  the real launcher path, reaches the New Bark Town home overworld, and renders
+  the live voxel view under LÖVE 11.5
+- the real-ROM smoke performs a quick-save/quick-load round trip and validates
+  the 32 KB battery save plus MBC3 RTC persistence in an isolated test identity

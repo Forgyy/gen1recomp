@@ -212,7 +212,15 @@ local function bootGame(version)
   if GameVersion.info().runtime == "lua-gbc" then
     Game = require("src.gen2.CrystalRuntime")
     Game:load()
-    Game.speedOverride = speedOverride
+    -- Crystal uses the same frame-driver contract as Gen 1.  Keeping this
+    -- setup below the early return made POKEPORT_DRIVER silently skip its
+    -- script for every Gen 2 run, blocking real-ROM automation and captures.
+    local driverPath = os.getenv("POKEPORT_DRIVER")
+    if driverPath then
+      local fn = assert(loadfile(driverPath))()
+      driverCo = coroutine.create(fn)
+    end
+    Game.speedOverride = driverCo and 1 or speedOverride
     return
   end
   local CacheFs = require("src.import.CacheFs")
