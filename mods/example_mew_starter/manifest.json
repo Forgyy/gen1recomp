@@ -5,6 +5,7 @@
   "entry": "main.lua",
   "category": "GAMEPLAY",
   "priority": 100,
+  "experimental": true,
   "dependencies": [],
   "optional_dependencies": [],
   "conflicts": [],

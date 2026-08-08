@@ -3,6 +3,10 @@
 data/generated/
 assets/generated/
 
+# User-supplied cartridge images are never source artifacts.
+*.gb
+*.gbc
+
 # LÖVE packages
 *.love
 

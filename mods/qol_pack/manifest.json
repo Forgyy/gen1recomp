@@ -1,0 +1,15 @@
+{
+  "id": "qol_pack",
+  "name": "Quality of Life Pack",
+  "version": "1.0.0",
+  "api": 2,
+  "entry": "main.lua",
+  "profile": "overhaul",
+  "category": "TWEAK",
+  "game_version": ">=0.0.0-0 <2.0.0",
+  "priority": 100,
+  "dependencies": [],
+  "optional_dependencies": [],
+  "conflicts": [],
+  "description": "A configurable bundle of quality-of-life options: EXP rate, catch help, cheaper marts, and a play-stats tracker."
+}

@@ -1,0 +1,18 @@
+{
+  "id": "CRYSTAL_VOXEL",
+  "name": "Crystal Voxel Diorama",
+  "version": "0.1.0",
+  "api": 2,
+  "entry": "main.lua",
+  "profile": "content",
+  "category": "GRAPHICS",
+  "game_version": "0.0.0-dev || >=0.1.0 <2.0.0",
+  "game_generations": [2],
+  "priority": 120,
+  "dependencies": [],
+  "optional_dependencies": [],
+  "conflicts": [],
+  "permissions": ["engine_internals"],
+  "affects_link": false,
+  "description": "Renders Pokemon Crystal as a live VRAM-driven voxel diorama."
+}
