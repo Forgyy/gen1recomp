@@ -145,6 +145,11 @@ local function allRequiredFilesExist(version)
   local CacheFs = require("src.import.CacheFs")
   local saved = CacheFs.prefix
   CacheFs.prefix = GameVersion.cachePrefix(version)
+  if GameVersion.info(version).runtime == "lua-gbc" then
+    local ok = CacheFs.exists("game.gbc")
+    CacheFs.prefix = saved
+    return ok
+  end
   local ok = true
   for _, path in ipairs(REQUIRED_FILES) do
     if not CacheFs.exists(path) then ok = false; break end
@@ -156,18 +161,22 @@ local function allRequiredFilesExist(version)
   return ok
 end
 
--- A developer checkout / Python build leaves Red's generated data in the
--- physfs SOURCE at the un-prefixed root (the checked-out data/generated and
--- assets/generated); it is always current and never moves into red/.  Only
--- Red ships this way (Blue/Yellow are import-only).  The check goes through
--- love.filesystem directly so the red/ cache prefix cannot hide the source
--- tree, and the realDirectory test keeps a save-dir cache from counting.
-local function sourceTreeHasData()
+-- A developer checkout / Python build leaves generated data in the physfs
+-- source: Red at the historical root, Blue/Yellow in their versioned trees.
+-- Imported Red caches still live under red/.  Check source paths directly so
+-- that cache prefix cannot hide Red's source tree, and keep save-dir caches
+-- from counting as current source data.
+local function sourceTreeHasData(version)
   if not love.filesystem.getRealDirectory then return false end
+  local prefix = version == "red" and "" or GameVersion.cachePrefix(version)
   for _, path in ipairs(REQUIRED_FILES) do
-    if love.filesystem.getInfo(path, "file") == nil then return false end
+    if love.filesystem.getInfo(prefix .. path, "file") == nil then return false end
   end
-  local real = love.filesystem.getRealDirectory(REQUIRED_FILES[1])
+  for _, path in ipairs(VERSION_REQUIRED_FILES[version] or {}) do
+    if love.filesystem.getInfo(prefix .. path, "file") == nil then return false end
+  end
+  local path = prefix .. REQUIRED_FILES[1]
+  local real = love.filesystem.getRealDirectory(path)
   return real == love.filesystem.getSource()
 end
 
@@ -224,7 +233,7 @@ local function purgeSaveDirCache()
   end
   -- Purge each version's stale save-directory copy (under its red/ / blue/
   -- / yellow/ prefix) so it cannot shadow the portable game-folder cache.
-  for _, version in ipairs(GameVersion.ORDER) do
+  for _, version in ipairs(GameVersion.IMPORT_ORDER) do
     local prefix = GameVersion.cachePrefix(version)
     if saveDirHas(prefix .. MARKER_PATH) or saveDirHas(prefix .. REQUIRED_FILES[1]) then
       removeTree(prefix .. "data/generated")
@@ -244,10 +253,8 @@ function RomImporter.isReady(version)
     -- save-directory copy that would otherwise shadow it at runtime.
     purgeSaveDirCache()
   end
-  -- Red generated data in the physfs source (developer checkout / Python
-  -- build) is always current; Blue is import-only and falls through to the
-  -- version-marker gate.
-  if version == "red" and sourceTreeHasData() then return true end
+  -- Generated data in a developer checkout / Python build is always current.
+  if sourceTreeHasData(version) then return true end
   local saved = CacheFs.prefix
   CacheFs.prefix = GameVersion.cachePrefix(version)
   local marker = CacheFs.read(MARKER_PATH)
@@ -348,8 +355,6 @@ local IMPORTS_DIR = "imports"
 local BASE_ROMS_DIR = "baseroms"
 local MODS_INBOX_DIR = "imports/mods"
 local SAVES_INBOX_DIR = "imports/saves"
-local ROM_BYTES = 1024 * 1024
-
 local function savesInboxDir(version)
   return SAVES_INBOX_DIR .. "/" .. tostring(version)
 end
@@ -392,7 +397,7 @@ function RomImporter:ensureModsInboxDir()
   return false
 end
 
--- NX raw .sav inbox per game: imports/saves/{red,blue,yellow}/.
+-- NX raw .sav inbox per importable game: imports/saves/{red,blue,yellow}/.
 -- Parent imports/ then imports/saves/ first — createDirectory is not nested.
 -- Creates all three version folders so MTP browsing shows where each game goes.
 function RomImporter:ensureSavesInboxDir(version)
@@ -405,7 +410,7 @@ function RomImporter:ensureSavesInboxDir(version)
       return false
     end
   end
-  for v in pairs(GameVersion.VERSIONS) do
+  for _, v in ipairs(GameVersion.IMPORT_ORDER) do
     local dir = savesInboxDir(v)
     local vInfo = love.filesystem.getInfo(dir)
     if vInfo and vInfo.type ~= "directory" then return false end
@@ -444,7 +449,7 @@ end
 
 function RomImporter:_resolveSaveVersion(version)
   version = version or self.panelVersion or self.tab
-  if GameVersion.VERSIONS[version] then return version end
+  if GameVersion.isImportable(version) then return version end
   return self:_savedropTarget()
 end
 
@@ -480,7 +485,7 @@ local function listRomPaths(dir)
 end
 
 local function baseRomScanSatisfied(self)
-  for _, version in ipairs(GameVersion.ORDER) do
+  for _, version in ipairs(GameVersion.IMPORT_ORDER) do
     if not self.ready[version] and not self.baseRoms[version] then
       return false
     end
@@ -520,10 +525,10 @@ function RomImporter:_stepBaseRomScan()
   scan.index = scan.index + 1
 
   local info = love.filesystem.getInfo(path, "file")
-  if info and info.size == ROM_BYTES then
+  if info and GameVersion.isKnownRomSize(info.size) then
     local data = love.filesystem.read(path)
-    if type(data) == "string" and #data == ROM_BYTES then
-      local version = GameVersion.forSha1(sha1(data))
+    if type(data) == "string" and GameVersion.isKnownRomSize(#data) then
+      local version = GameVersion.forRom(sha1(data), #data)
       if version and not self.ready[version] and not self.baseRoms[version] then
         self.baseRoms[version] = {
           path = path,
@@ -764,10 +769,10 @@ function RomImporter:rescanAction(version)
       self:setError("The file could not be read: " .. displayName, version)
       return
     end
-    if #data ~= ROM_BYTES then
+    if not GameVersion.isKnownRomSize(#data) then
       if not junkData then junkData, junkName = data, displayName end
     else
-      local romVersion = GameVersion.forSha1(sha1(data))
+      local romVersion = GameVersion.forRom(sha1(data), #data)
       if not romVersion then
         if not junkData then junkData, junkName = data, displayName end
       elseif romVersion ~= version then
@@ -840,9 +845,9 @@ local function findPendingRom(ready)
   for _, name in ipairs(love.filesystem.getDirectoryItems("")) do
     if name:lower():match("%.gbc?$") and love.filesystem.getInfo(name, "file") then
       local data = love.filesystem.read(name)
-      if type(data) == "string" and #data == 1024 * 1024 then
-        local version = GameVersion.forSha1(sha1(data))
-        if version and not ready[version] then
+      if type(data) == "string" and GameVersion.isKnownRomSize(#data) then
+        local version = GameVersion.forRom(sha1(data), #data)
+        if version and GameVersion.isImportable(version) and not ready[version] then
           return name, data
         end
       end
@@ -864,9 +869,11 @@ local function consumePickedRomError(self)
   local preferred = "picked_rom.gb"
   if not love.filesystem.getInfo(preferred, "file") then return false end
   local data = love.filesystem.read(preferred)
-  if type(data) == "string" and #data == 1024 * 1024 then
-    local version = GameVersion.forSha1(sha1(data))
-    if version and self.ready[version] then return false end
+  if type(data) == "string" and GameVersion.isKnownRomSize(#data) then
+    local version = GameVersion.forRom(sha1(data), #data)
+    if version and GameVersion.isImportable(version) and self.ready[version] then
+      return false
+    end
   end
   love.filesystem.remove(preferred)
   if type(data) ~= "string" then
@@ -1200,7 +1207,7 @@ function RomImporter.new(onComplete, opts)
   -- such install would read as "never imported" and demand the ROM again.
   CacheFs.migrateLegacyRedCache()
 
-  for _, version in ipairs(GameVersion.ORDER) do
+  for _, version in ipairs(GameVersion.IMPORT_ORDER) do
     local info = GameVersion.info(version)
     local ready = RomImporter.isReady(version) and not self.forceImport
     self.ready[version] = ready
@@ -1212,8 +1219,7 @@ function RomImporter.new(onComplete, opts)
     CacheFs.prefix = saved
     self.returning[version] =
       (not ready) and marker ~= nil and marker ~= markerFor(version)
-    self.romName[version] = "pokemon_" .. info.id
-      .. (info.id == "yellow" and ".gbc" or ".gb")
+    self.romName[version] = "pokemon_" .. info.id .. info.romExtension
   end
   self:_applyLastVersionTab()
   self:_queueBaseRomScan()
@@ -1222,7 +1228,7 @@ function RomImporter.new(onComplete, opts)
   -- leftover SAF pick), routed by SHA-1.  Already-imported carts are skipped
   -- so a stale picked_rom.gb cannot block another version.
   local needRom = false
-  for _, version in ipairs(GameVersion.ORDER) do
+  for _, version in ipairs(GameVersion.IMPORT_ORDER) do
     if not self.ready[version] then needRom = true; break end
   end
   if mobileFileBridge and needRom then
@@ -1371,7 +1377,7 @@ function RomImporter:focus(f)
       self.saveNotice[version] and self.saveNotice[version].ok)
     return
   end
-  for _, v in ipairs(GameVersion.ORDER) do
+  for _, v in ipairs(GameVersion.IMPORT_ORDER) do
     if not self.ready[v] then
       local name, data = findPendingRom(self.ready)
       if name then
@@ -1414,34 +1420,44 @@ local function resetPointerCursor(self)
 end
 
 -- Verify + extract a ROM.  The version is decided by the ROM's own SHA-1, so
--- dropping a Red, Blue, or Yellow cart into any column always lands in the
--- right one.
+-- dropping a known cart into any column always lands in the right one.
 function RomImporter:startData(data, displayName)
   if self.workState == "working" then return end
   if type(data) ~= "string" then
     self:setError("The selected file could not be read.")
     return
   end
-  if #data ~= 1024 * 1024 then
-    self:setError(("Expected a 1 MiB Game Boy ROM; this file is %.2f MiB.")
-      :format(#data / 1024 / 1024))
+  local actualHash = sha1(data)
+  local knownVersion = GameVersion.forSha1(actualHash)
+  if knownVersion and not GameVersion.matchesRomSize(knownVersion, #data) then
+    local info = GameVersion.info(knownVersion)
+    self:setError(("%s should be %g MiB; this file is %.2f MiB.")
+      :format(info.displayName, info.romBytes / 1024 / 1024,
+        #data / 1024 / 1024), knownVersion)
     return
   end
-  local actualHash = sha1(data)
-  local version = GameVersion.forSha1(actualHash)
+  local version = GameVersion.forRom(actualHash, #data)
   if not version then
+    local sizeNote = GameVersion.isKnownRomSize(#data) and ""
+      or (" The supported cartridges are 1 MiB or 2 MiB; this file is "
+        .. ("%.2f MiB."):format(#data / 1024 / 1024))
     self:setError(("Unsupported ROM (SHA-1 %s). This needs a clean US Pokemon "
-      .. "Red, Blue, or Yellow dump; patched, trimmed or \"fixed\" dumps "
+      .. "Red, Blue, Yellow, or Crystal v1.0 dump; patched, trimmed or \"fixed\" dumps "
       .. "(tagged [b] or [BF]) never verify."):format(actualHash))
+    if sizeNote ~= "" then self.detail = self.detail .. sizeNote end
     return
   end
   local info = GameVersion.info(version)
 
+  if GameVersion.VERSIONS[self.tab] then self.tab = version end
+  if not GameVersion.isImportable(version) then
+    self:setError(info.lockedReason or (info.displayName .. " is not importable yet."),
+      version)
+    return
+  end
+
   -- Bring the launcher to this version's tab so its progress bar is on screen
   -- (a dropped cart is routed by SHA-1 regardless of which tab was showing).
-  if GameVersion.VERSIONS[self.tab] then
-    self.tab = version
-  end
   self.importing = version
   self.workState = "working"
   self.notice = nil
@@ -1464,18 +1480,27 @@ function RomImporter:startData(data, displayName)
     CacheFs.removeTree("data/generated")
     CacheFs.removeTree("assets/generated")
     CacheFs.remove(MARKER_PATH)
+    CacheFs.remove("game.gbc")
 
-    local manifest = decodeManifest(version)
-    local RomExtractor = require("src.import.RomExtractor")
-    local extractor = RomExtractor.new(self.romData, manifest,
-      function(progress, total, stage, current, stageTotal)
-        self.status = stage
-        self.progress = progress / total
-        self.stageCurrent = current
-        self.stageTotal = stageTotal
-        coroutine.yield()
-      end)
-    extractor:run()
+    if info.runtime == "lua-gbc" then
+      self.status = "Installing Lua Gen 2 runtime data"
+      local wrote, romWriteError = CacheFs.write("game.gbc", self.romData)
+      if not wrote then error("could not store the verified ROM: " .. tostring(romWriteError)) end
+      self.progress = 0.9
+      coroutine.yield()
+    else
+      local manifest = decodeManifest(version)
+      local RomExtractor = require("src.import.RomExtractor")
+      local extractor = RomExtractor.new(self.romData, manifest,
+        function(progress, total, stage, current, stageTotal)
+          self.status = stage
+          self.progress = progress / total
+          self.stageCurrent = current
+          self.stageTotal = stageTotal
+          coroutine.yield()
+        end)
+      extractor:run()
+    end
     self.romData = nil
     collectgarbage("collect")
     -- Written last: the marker is what isReady() checks, so it must only
@@ -1644,7 +1669,7 @@ end
 -- guess.
 function RomImporter:_savedropTarget()
   local v = self.tab
-  if GameVersion.VERSIONS[v] then return v end
+  if GameVersion.isImportable(v) then return v end
   return "red"
 end
 
@@ -2196,7 +2221,10 @@ function RomImporter:resumeAfterOverlay()
 end
 
 function RomImporter:_cycleTab(delta)
-  local order = { "red", "blue", "yellow", "mods", "find" }
+  local order = {}
+  for _, id in ipairs(GameVersion.ORDER) do order[#order + 1] = id end
+  order[#order + 1] = "mods"
+  order[#order + 1] = "find"
   local idx = 1
   for i, id in ipairs(order) do
     if id == self.tab then idx = i; break end

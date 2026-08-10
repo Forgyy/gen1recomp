@@ -1,0 +1,27 @@
+-- Sharing metadata: read by tooling and the manager detail pane, never by
+-- the loader's merge.
+return {
+  summary = "QoL options: EXP rate, catch help, mart discount, play stats.",
+  author = "zak",
+  tags = { "quality-of-life", "data-only", "ui", "beginner" },
+  differences = {
+    changed = {
+      "every priced item costs less while MART DISCOUNT is on (50% default)",
+      "exp.gain scaled by the EXP RATE option (default 1x -- vanilla)",
+      "catch.rate raised or forced by the CATCH HELP option (default OFF -- vanilla)",
+    },
+    added = {
+      "a QOL start-menu entry showing the play-stats counters",
+      "a `qol` developer-console verb printing the same block",
+      "steps/battles/catches counters in this mod's own save namespace",
+    },
+    known = {
+      "the mart discount folds at load; changing the option needs a reload (F5 in dev, or restart) to apply",
+      "battles fought before installing are not counted",
+    },
+  },
+  credits = {
+    { who = "pret/pokered", for_ = "the price, exp and catch tables this patches over" },
+  },
+  compat = { engine = ">=1.0.0 <2.0.0", modApi = 2 },
+}

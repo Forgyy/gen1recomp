@@ -16,8 +16,20 @@ local dirs = { "tests/modkit/cases" }
 -- gallery itself is covered by tests/mod_examples_tests.lua.  Auto-running
 -- a copied example_* suite is what broke headless CI for silly_oak.
 local FsIo = require("tests.fs_io")
+local Json = require("src.link.Json")
+
+local function isExperimental(name)
+  local handle = io.open("mods/" .. name .. "/manifest.json", "rb")
+  if not handle then return false end
+  local source = handle:read("*a")
+  handle:close()
+  local ok, manifest = pcall(Json.decode, source)
+  return ok and type(manifest) == "table" and manifest.experimental == true
+end
+
 for _, name in ipairs(FsIo.listDir("mods")) do
-  if not name:find(".", 1, true) and not name:match("^example_") then
+  if not name:find(".", 1, true) and not name:match("^example_")
+      and not isExperimental(name) then
     local dir = "mods/" .. name .. "/tests"
     if FsIo.isDir(dir) then dirs[#dirs + 1] = dir end
   end

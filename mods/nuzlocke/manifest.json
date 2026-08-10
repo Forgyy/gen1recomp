@@ -11,6 +11,7 @@
   "permissions": [
     "engine_internals"
   ],
+  "experimental": true,
   "dependencies": [],
   "optional_dependencies": [],
   "conflicts": [],

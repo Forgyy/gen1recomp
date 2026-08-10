@@ -306,9 +306,12 @@ end
 -- the label is read.  Unknown versions fall back to the commit green.
 local CART_COLOR = {
   red = PAL.railRed, blue = PAL.railBlue, yellow = PAL.railGold,
+  crystal = PAL.railCrystal,
 }
 local function cartColor(version)
-  return CART_COLOR[version] or PAL.green
+  local info = GameVersion.info(version)
+  local key = info and info.launcherColor or version
+  return CART_COLOR[key] or PAL.green
 end
 
 local function modStatusColor(status)
@@ -449,17 +452,24 @@ local function buildHeader(imp, m)
     or love.graphics.newImage("assets/launcher/mods.png")
   imp._findIcon = imp._findIcon
     or love.graphics.newImage("assets/launcher/find.png")
-  -- The three game tabs keep their cartridge colours -- that is the one piece
+  -- Game tabs keep their cartridge colours -- that is the one piece
   -- of brand identity in the launcher, and "the red one" is how people
   -- actually refer to these.  The colour rides the outline and the glyph at
   -- rest and becomes the fill when active, the same rule the buttons follow.
-  local tabs = {
-    { id = "red",    letter = "R", label = Strings("RED"),    color = PAL.railRed },
-    { id = "blue",   letter = "B", label = Strings("BLUE"),   color = PAL.railBlue },
-    { id = "yellow", letter = "Y", label = Strings("YELLOW"), color = PAL.railGold },
-    { id = "mods",   icon = imp._modsIcon, label = Strings("MODS") },
-    { id = "find",   icon = imp._findIcon, label = Strings("FIND MODS") },
-  }
+  local tabs = {}
+  for _, id in ipairs(GameVersion.ORDER) do
+    local info = GameVersion.info(id)
+    tabs[#tabs + 1] = {
+      id = id,
+      letter = info.launcherLetter or info.label:sub(1, 1):upper(),
+      label = Strings(info.label:upper()),
+      color = cartColor(id),
+    }
+  end
+  tabs[#tabs + 1] = { id = "mods", icon = imp._modsIcon,
+    label = Strings("MODS") }
+  tabs[#tabs + 1] = { id = "find", icon = imp._findIcon,
+    label = Strings("FIND") }
   local tabH = m.chip
   local tx = m.x + m.pad
   local ty = y + math.floor(6 * m.s)
@@ -552,8 +562,9 @@ end
 local function romModel(imp, version, info, ready, locked)
   local importLabel = imp.isNX and Strings("Scan again") or Strings("Import ROM")
   if locked then
-    return { state = Strings("Not supported yet"),
-      detail = Strings("Support for this game is on the way."),
+    return { state = Strings(info and info.lockedState or "Not supported yet"),
+      detail = Strings(info and info.lockedReason
+        or "Support for this game is on the way."),
       label = Strings("Import unavailable"), enabled = false }
   end
   local dropHint = imp.isNX and Strings("Copy the .gb/.gbc via MTP into imports/.")
@@ -590,7 +601,7 @@ local function romModel(imp, version, info, ready, locked)
       label = Strings("Import detected ROM"), enabled = true }
   elseif scanning then
     return { state = Strings("Checking baseroms..."),
-      detail = Strings("Looking for compatible Red, Blue, and Yellow ROMs."),
+      detail = Strings("Looking for compatible game ROMs."),
       label = Strings("Import ROM"), enabled = false }
   elseif imp.returning[version] then
     return { state = Strings("Update required"),
@@ -689,6 +700,35 @@ local function chipWidth(label, m)
 end
 
 local function buildSlotCard(imp, x, y, w, availH, m, version, ready)
+  if GameVersion.info(version).runtime == "lua-gbc" then
+    local pad = math.floor(14 * m.s)
+    local iw = w - 2 * pad
+    local gap = math.floor(8 * m.s)
+    local notice = imp.saveNotice[version]
+    local detail = notice and notice.text
+      or Strings("Crystal saves automatically to its standard 32 KB battery file. F1/F2 manage the quick state while playing.")
+    local detailH = Kit.wrapHeight("small", detail, iw, 3)
+    local h = pad + Kit.textHeight("caption") + gap + detailH + gap + m.btnH + pad
+    Kit.card(x, y, w, math.min(h, availH))
+    local cy = y + pad
+    Kit.caption(x + pad, cy, Strings("BATTERY SAVE"))
+    cy = cy + Kit.textHeight("caption") + gap
+    cy = cy + Kit.textWrapped("small", detail, x + pad, cy, iw,
+      notice and (notice.ok and PAL.green or PAL.red) or PAL.muted, 3) + gap
+    local buttonGap = math.floor(8 * m.s)
+    local buttonW = (iw - buttonGap) / 2
+    btn(imp, x + pad, cy, buttonW, m.btnH, "sav-import-" .. version,
+      imp.isNX and Strings("Scan again") or Strings("Import save"), {
+        kind = "accent", font = "small", enabled = ready and true or false,
+        action = ready and function() imp:chooseSaveImport(version) end or nil,
+      })
+    btn(imp, x + pad + buttonW + buttonGap, cy, buttonW, m.btnH,
+      "sav-export-" .. version, Strings("Export save"), {
+        kind = "accent", font = "small", enabled = ready and true or false,
+        action = ready and function() imp:exportSave(version) end or nil,
+      })
+    return h
+  end
   imp:_ensureSlots(version)
   local slots = imp.slots[version] or {}
   local active = imp.activeSlot[version]
@@ -940,7 +980,7 @@ end
 local function buildGamePanel(imp, x, y, w, availH, m, version)
   imp.panelVersion = version
   local info = GameVersion.info(version)
-  local locked = info == nil
+  local locked = info == nil or info.importable == false
   local gameName = info and (info.launcherName or info.displayName)
     or tostring(version)
   local ready = (not locked) and imp.ready[version] or false
@@ -949,10 +989,10 @@ local function buildGamePanel(imp, x, y, w, availH, m, version)
   local titleH = Kit.textHeight("title")
   Kit.text("title", Kit.ellipsize("title", gameName, w * 0.6), x, y, PAL.heading)
   local tagText, tagCol
-  if ready then tagText, tagCol = Strings("GOOD TO GO"), PAL.green
+  if locked then tagText, tagCol = Strings("IN DEVELOPMENT"), PAL.steel
+  elseif ready then tagText, tagCol = Strings("GOOD TO GO"), PAL.green
   elseif imp.baseRoms and imp.baseRoms[version] then
     tagText, tagCol = Strings("ROM FOUND"), PAL.green
-  elseif locked then tagText, tagCol = Strings("COMING SOON"), PAL.steel
   else tagText, tagCol = Strings("ROM REQUIRED"), PAL.yellow end
   local tagW = Kit.textWidth("micro", tagText) + math.floor(18 * m.s)
   local tagH = Kit.textHeight("micro") + math.floor(10 * m.s)

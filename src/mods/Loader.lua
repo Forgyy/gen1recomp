@@ -141,6 +141,9 @@ function Loader.new(opts)
     modInput = {},
     fs = (opts and opts.fs) or (love and love.filesystem),
     dev = dev,
+    game = opts and opts.game,
+    generation = (opts and opts.generation) or 1,
+    skipBuiltins = opts and opts.skipBuiltins == true,
   }, Loader)
   assert(self.fs, "Loader.new requires opts.fs when love is unavailable")
   for name, spec in pairs(Schemas.REGISTRIES) do
@@ -256,7 +259,20 @@ function Loader:_validate()
     local mod = self.mods[id]
     local manifest = mod.manifest
     local reason
-    if not self:_exists(mod.path .. "/" .. manifest.entry) then
+    local supportsGeneration = false
+    for _, generation in ipairs(manifest.game_generations or { 1 }) do
+      if generation == self.generation then supportsGeneration = true break end
+    end
+    if not supportsGeneration then
+      -- A shared mods directory naturally contains packages for other game
+      -- generations.  They are not broken and should not pollute the runtime
+      -- error feed; keep them visible to the manager as incompatible while
+      -- excluding them from dependency resolution and entry execution.
+      mod.enabled = false
+      mod.state = "incompatible"
+      mod.failure = ("does not support game generation %d"):format(self.generation)
+      Logger.info("skipped mod %s: %s", manifest.id, mod.failure)
+    elseif not self:_exists(mod.path .. "/" .. manifest.entry) then
       reason = "entry file missing: " .. manifest.entry
     elseif manifest.options_schema
         and not self:_exists(mod.path .. "/" .. manifest.options_schema) then
@@ -569,6 +585,9 @@ end
 function Loader:_api(mod)
   local loader = self
   local modId = mod.manifest.id
+  local Storage = engineRequire("src.mods.Storage")
+  local storage = Storage and Storage.new(modId, loader.fs)
+  local Checkpoint = engineRequire("src.core.Checkpoint")
   local api = {
     id = modId,
     version = mod.manifest.version,
@@ -656,6 +675,25 @@ function Loader:_api(mod)
           loader.modSave[modId] = bucket
         end
         bucket[key] = value
+      end,
+    },
+    -- Data-only state independent of the vanilla progress checkpoint. The
+    -- engine binds version/playthrough/mod scope and portable persistence;
+    -- callers never receive paths or a raw filesystem handle.
+    storage = {
+      context = function(_, game) return storage:context(game) end,
+      write = function(_, game, key, value) return storage:write(game, key, value) end,
+      read = function(_, game, key) return storage:read(game, key) end,
+      list = function(_, game, prefix) return storage:list(game, prefix) end,
+      delete = function(_, game, key) return storage:delete(game, key) end,
+    },
+    -- Runtime safety and reconstruction stay engine-owned. Checkpoints contain
+    -- data only; no controller, stack, coroutine or renderer object crosses out.
+    checkpoints = {
+      inspect = function(_, game) return Checkpoint.inspect(game) end,
+      capture = function(_, game) return Checkpoint.capture(game) end,
+      restore = function(_, game, checkpoint)
+        return Checkpoint.restore(game, checkpoint)
       end,
     },
     options = {
@@ -914,7 +952,9 @@ function Loader:load(data)
   end
   -- vanilla content is registrations too, and they land before discovery so
   -- a mod's register collides with the engine's and has to say override
-  require("src.mods.Builtins").install(self.content, data)
+  if not self.skipBuiltins then
+    require("src.mods.Builtins").install(self.content, data)
+  end
   self:_loadState()
   self:_discover()
   -- Experimental mods stay off until the player opts in: a missing

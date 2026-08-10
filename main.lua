@@ -208,6 +208,21 @@ local function bootGame(version)
   -- data, so data/generated + assets/generated resolve to that version's files.
   local GameVersion = require("src.core.GameVersion")
   GameVersion.set(version or os.getenv("POKEPORT_VERSION") or "red")
+  _G.POKEPORT_GAME_GENERATION = GameVersion.info().generation
+  if GameVersion.info().runtime == "lua-gbc" then
+    Game = require("src.gen2.CrystalRuntime")
+    Game:load()
+    -- Crystal uses the same frame-driver contract as Gen 1.  Keeping this
+    -- setup below the early return made POKEPORT_DRIVER silently skip its
+    -- script for every Gen 2 run, blocking real-ROM automation and captures.
+    local driverPath = os.getenv("POKEPORT_DRIVER")
+    if driverPath then
+      local fn = assert(loadfile(driverPath))()
+      driverCo = coroutine.create(fn)
+    end
+    Game.speedOverride = driverCo and 1 or speedOverride
+    return
+  end
   local CacheFs = require("src.import.CacheFs")
   -- Keep CacheFs.prefix aligned for any CacheFs.read fallback during Data:load
   -- (Blue/Yellow caches live under blue/ / yellow/).
@@ -342,7 +357,7 @@ function love.load(args)
   end
 
   -- LAUNCH OPTIONS: skip the launcher and boot a game directly.
-  --   --game red|blue|yellow  (or POKEPORT_GAME / POKEPORT_LAUNCH)
+  --   --game red|blue|yellow|crystal  (or POKEPORT_GAME / POKEPORT_LAUNCH)
   --   --slot <id>             optional; picks the save slot to load
   --   --launcher              force the launcher even if a game is set
   -- This is what a desktop shortcut, a Steam entry, or a frontend like
@@ -370,11 +385,11 @@ function love.load(args)
     LaunchOptions.pendingTab = launchGame
   end
 
-  -- Interactive: the launcher always runs.  Red, Blue, and Yellow are each
-  -- live: a column shows Play when that game's ROM is already imported, or
-  -- Choose ROM / drag-drop when it is not.  Any dropped .gb is routed by its
-  -- SHA-1 (GameVersion.forSha1); pressing Play boots that game.  Edit on a
-  -- save row opens the bundled editor on that slot (openEditor).
+  -- Interactive: the launcher always runs.  Importable games show Play when
+  -- their ROM is cached, or Choose ROM / drag-drop when it is not.  Known
+  -- development targets such as Crystal have a visible locked tab until their
+  -- generation-specific decoder and runtime are complete.  Any dropped ROM
+  -- is routed by SHA-1 (GameVersion.forSha1).
   Importer = RomImporter.new(function(version)
     Importer = nil
     bootGame(version)
@@ -817,6 +832,7 @@ function love.quit()
   -- restart path must be no worse than that, not quietly better.
   local scripted = os.getenv("POKEPORT_AUTOPILOT") or os.getenv("POKEPORT_DRIVER")
     or os.getenv("POKEPORT_IMPORT_ONLY") == "1" or os.getenv("POKEPORT_IMPORT_ROM")
+  if Game and Game.shutdown then pcall(Game.shutdown, Game) end
   -- #887: a shortcut session (--game / POKEPORT_GAME) has no launcher to go
   -- back to and the restart would re-read the shortcut, so it exits instead.
   if Game and not Importer and not quitToLauncher and not scripted
